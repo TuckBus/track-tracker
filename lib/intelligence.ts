@@ -36,7 +36,9 @@ function riskSignals(telemetry: TelemetryRecord[], alerts: ServiceAlert[]) {
   };
 }
 
-export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[]): string {
+export type AnalysisContext = "network" | "stop";
+
+export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[], context: AnalysisContext = "network"): string {
   const compactTelemetry = telemetry.map((item) => ({
     source: item.source,
     vehicle_id: item.vehicle_id,
@@ -46,8 +48,11 @@ export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], 
     position_available: item.latitude !== null && item.longitude !== null,
     metadata: item.source === "opensky" ? { callsign: item.metadata.callsign, airport: item.metadata.airport } : undefined,
   }));
+  const contextPolicy = context === "stop"
+    ? "This is a specific stop check, so be more responsive to localized evidence: one or more nearby vehicles with a clearly slow measurable speed can justify a cautious possible-delay or anomaly result, especially when the route context supports it. Do not require a route-wide pattern for this focused check. Still ignore null speeds, null positions, and notices by themselves, and do not call a vehicle absent because a field is unknown."
+    : "For network monitoring, be moderately responsive to credible repeated slow-speed or route-wide evidence; a meaningful concern does not need to be a confirmed outage, but isolated weak signals should remain on_time.";
   return `You are a cautious transit early-warning assistant. Return ONLY one JSON object with status ("disrupted"|"on_time"|"anomalous"), action ("trigger_ui_alert"|"draft_email"|"reschedule_calendar"|"none"), message, affected_routes (an array of route IDs, or [] if none), and reasoning (a short plain-language explanation of the evidence and decision). Write the message and reasoning for a traveler, not a developer: use plain language, explain what happened and what they should do, and avoid acronyms, raw IDs, JSON, markdown, and internal system terms.
-Decision policy: you decide what is important to note. Filter noise aggressively. A null speed means the sensor did not report a usable speed; it is unknown, not zero, stopped, or delayed, and is generally low-concern evidence. Never treat null speed as 0 mph or as evidence that a vehicle is absent. A null position means the location is unknown, not that the vehicle is absent. One or two unknown positions on a route are usually routine data quality noise; only call out missing positions when the pattern is broad enough to affect confidence in the route assessment. Posted service notices are context only: many notices can describe separate minor issues and must not be treated as proof of a widespread outage. Do not issue an alert from notices alone. Use action "trigger_ui_alert" only when the combined telemetry, route context, and service notices support a meaningful traveler-facing risk. Prefer on_time when evidence is ambiguous or data quality is poor. You may mention a broad data-quality limitation in reasoning without turning it into a service disruption. When evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
+Decision policy: you decide what is important to note. ${contextPolicy} A null speed means the sensor did not report a usable speed; it is unknown, not zero, stopped, or delayed, and is generally low-concern evidence. Never treat null speed as 0 mph or as evidence that a vehicle is absent. A null position means the location is unknown, not that the vehicle is absent. One or two unknown positions on a route are usually routine data quality noise; only call out missing positions when the pattern is broad enough to affect confidence in the route assessment. Posted service notices are context only: many notices can describe separate minor issues and must not be treated as proof of a widespread outage. Do not issue an alert from notices alone. Use action "trigger_ui_alert" only when the combined telemetry, route context, and service notices support a meaningful traveler-facing risk. Prefer on_time when evidence is ambiguous or data quality is poor. You may mention a broad data-quality limitation in reasoning without turning it into a service disruption. When evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
 ITINERARY:
 ${JSON.stringify(itinerary)}
 TELEMETRY:
@@ -87,7 +92,7 @@ function endpointFor(configuredEndpoint: string) {
   return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
 }
 
-export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[]): Promise<{ action: ActionPayload; status: "connected" | "failed" | "not_configured"; error?: string }> {
+export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[], context: AnalysisContext = "network"): Promise<{ action: ActionPayload; status: "connected" | "failed" | "not_configured"; error?: string }> {
   const configuredEndpoint = process.env.BREV_NIM_ENDPOINT?.trim() || process.env.NEMOTRON_ENDPOINT?.trim();
   if (!configuredEndpoint) {
     log.warn("Nemotron is not configured; using deterministic fallback", { telemetry_count: telemetry.length });
@@ -104,7 +109,7 @@ export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[]
       headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
       body: JSON.stringify({
         model: configuredModel,
-        messages: [{ role: "system", content: buildPrompt(itinerary, telemetry, alerts) }],
+        messages: [{ role: "system", content: buildPrompt(itinerary, telemetry, alerts, context) }],
         temperature: 0,
         max_tokens: 400,
         chat_template_kwargs: { enable_thinking: false },

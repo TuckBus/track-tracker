@@ -53,13 +53,21 @@ describe("Nemotron intelligence", () => {
   it("uses an early-warning policy for credible but unconfirmed delays", () => {
     const prompt = buildPrompt([], stagedTelemetry("developing-delay").telemetry, []);
 
-    expect(prompt).toContain("Filter noise aggressively");
+    expect(prompt).toContain("be moderately responsive to credible repeated slow-speed");
     expect(prompt).toContain("null speed means the sensor did not report a usable speed");
     expect(prompt).toContain("Use action \"trigger_ui_alert\" only when the combined telemetry");
     expect(prompt).toContain("Do not issue an alert from notices alone");
     expect(prompt).toContain("do not claim a confirmed delay");
     expect(prompt).toContain('"slow_under_10_mph":7');
     expect(prompt).toContain('"missing_position_count":2');
+  });
+
+  it("uses a more responsive policy for focused stop checks", () => {
+    const prompt = buildPrompt([], stagedTelemetry("normal").telemetry, [], "stop");
+
+    expect(prompt).toContain("one or more nearby vehicles with a clearly slow measurable speed");
+    expect(prompt).toContain("Do not require a route-wide pattern");
+    expect(prompt).toContain("Still ignore null speeds");
   });
 
 });

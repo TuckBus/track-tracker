@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       [{ stop, stop_id: selectedStop.id, line, radius_miles: 1.5, purpose: "Decide whether this route is anomalous near this selected stop." }],
       matching,
       [],
+      "stop",
     )
     : null;
   const nemotronUnavailable = analysis !== null && analysis.status !== "connected";
