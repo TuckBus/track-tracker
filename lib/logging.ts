@@ -11,6 +11,11 @@ function write(level: "info" | "warn" | "error", message: string, context?: LogC
     message,
     ...(context ? { context } : {}),
   };
+  if ((process.env.NODE_ENV === "production" || process.env.NODE_ENV === "preview") && level !== "info") {
+    const output = JSON.stringify(entry);
+    if (level === "error") console.error(output);
+    else console.warn(output);
+  }
   const logFile = process.env.DISPATCH_LOG_FILE || (process.env.VERCEL ? "/tmp/dispatch.log" : path.join(process.cwd(), "logs", "dispatch.log"));
   mkdirSync(path.dirname(logFile), { recursive: true });
   appendFileSync(logFile, `${JSON.stringify(entry)}\n`, "utf8");
