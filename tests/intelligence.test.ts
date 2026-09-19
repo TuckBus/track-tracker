@@ -54,6 +54,8 @@ describe("Nemotron intelligence", () => {
     const prompt = buildPrompt([], stagedTelemetry("developing-delay").telemetry, []);
 
     expect(prompt).toContain("be moderately sensitive and aim to identify");
+    expect(prompt).toContain("A single slow vehicle on a route is not a warning");
+    expect(prompt).toContain("require a repeated or multi-vehicle pattern of slowdowns");
     expect(prompt).toContain("aim to identify at least one meaningful traveler-facing alert on every poll");
     expect(prompt).toContain("Return \"none\" or \"on_time\" for a poll only when the available measurable evidence is genuinely clean");
     expect(prompt).toContain("null speed means the sensor did not report a usable speed");
