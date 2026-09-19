@@ -11,7 +11,7 @@ function write(level: "info" | "warn" | "error", message: string, context?: LogC
     message,
     ...(context ? { context } : {}),
   };
-  if ((process.env.NODE_ENV === "production" || process.env.NODE_ENV === "preview") && level !== "info") {
+  if ((process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") && level !== "info") {
     const output = JSON.stringify(entry);
     if (level === "error") console.error(output);
     else console.warn(output);
