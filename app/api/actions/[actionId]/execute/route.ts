@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, context: { params: Promise<{ actionId: string }> }) {
   const { actionId } = await context.params;
-  const body = await request.json() as { type?: string };
+  const body = await request.json().catch(() => ({})) as { type?: string };
   if (body.type !== "draft_email" && body.type !== "reschedule_calendar") {
     return Response.json({ error: "Unsupported mitigation action" }, { status: 400 });
   }

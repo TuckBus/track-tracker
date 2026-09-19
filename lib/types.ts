@@ -20,6 +20,8 @@ export type ActionPayload = {
   message: string;
   source: string;
   created_at: string;
+  affected_routes?: string[];
+  reasoning?: string;
 };
 
 export type DispatchState = {
@@ -28,4 +30,16 @@ export type DispatchState = {
   itineraries: { id: string; label: string; mode: string; status: string }[];
   alerts: ActionPayload[];
   provider_errors: string[];
+  nemotron: { status: "connected" | "failed" | "not_configured"; error?: string; explanation?: string; checked_at: string | null };
+  service_alerts: ServiceAlert[];
+};
+
+export type ServiceAlert = {
+  id: string;
+  header: string;
+  description: string;
+  effect: string;
+  routes: string[];
+  stops: string[];
+  updated_at: string;
 };

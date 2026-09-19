@@ -11,6 +11,8 @@ const initial: DispatchState = {
   ],
   alerts: [],
   provider_errors: [],
+  nemotron: { status: "not_configured", checked_at: null },
+  service_alerts: [],
 };
 
 function redis(): Redis | null {
@@ -21,7 +23,8 @@ function redis(): Redis | null {
 export async function getState(): Promise<DispatchState> {
   const client = redis();
   if (!client) return initial;
-  return (await client.get<DispatchState>(key)) || initial;
+  const state = (await client.get<DispatchState>(key)) || initial;
+  return { ...initial, ...state, nemotron: state.nemotron || initial.nemotron, service_alerts: state.service_alerts || [] };
 }
 
 export async function saveState(state: DispatchState): Promise<DispatchState> {

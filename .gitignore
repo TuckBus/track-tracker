@@ -4,5 +4,6 @@ out/
 .vercel/
 .env
 .env.local
+logs/
 __pycache__/
 frontend/dist/
