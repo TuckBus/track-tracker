@@ -70,3 +70,30 @@ def describe_tz(name: str | None = None) -> str:
             f"using system local time. `pip install tzdata` for exact "
             f"IANA rules."
         )
+
+
+def fmt_clock(epoch: float | None) -> str:
+    """A wall-clock time like "4:25 PM", portably.
+
+    Two traps this avoids:
+
+    `%-I` strips the leading zero on glibc and raises ValueError on Windows,
+    because the dash modifier is a GNU extension. `%#I` is the MSVC spelling.
+    Neither is portable, so format with %I and strip the zero in Python.
+
+    `time.localtime` uses the system zone and ignores DISPATCH_TZ, so a
+    drafted email could print a different time than the slack calculation
+    that triggered it. This goes through the same resolved zone as everything
+    else.
+    """
+    if not epoch:
+        return ""
+    dt = datetime.fromtimestamp(float(epoch), tz=resolve_tz())
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def fmt_day(epoch: float | None) -> str:
+    """A date like "Fri, Sep 19", portably."""
+    if not epoch:
+        return ""
+    return datetime.fromtimestamp(float(epoch), tz=resolve_tz()).strftime("%a, %b %d")

@@ -1,358 +1,1017 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dispatch board</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Dispatch</title>
 <style>
+/* ===========================================================================
+   Dispatch
+
+   Design brief: a rider opens this to answer one question -- "is my trip
+   still fine?" -- and occasionally to look something up. So the top of the
+   screen is an answer, not a chart, and everything else is reachable in one
+   tap.
+
+   Visual grounding is transit signage plus platform boards: route numbers set
+   as real signage bullets, departure times in tabular figures so columns of
+   times line up the way a printed board does, and exactly four status colours
+   that map to the four decisions the system can make. One typeface (the
+   system UI face, which is SF on Apple and Segoe on Windows) with hierarchy
+   carried by size and weight rather than by mixing families.
+   ========================================================================= */
+:root{
+  --bg:#fff; --wash:#F4F6F8; --raise:#fff; --line:#E3E7EC; --line2:#EEF1F4;
+  --text:#0A1420; --dim:#5D6B7C; --faint:#8A97A6;
+  --blue:#0B5CD5; --bluewash:#EAF1FD;
+  --ok:#0E7C5A; --okwash:#E3F6EE;
+  --warn:#8A5200; --warnwash:#FFF2D4;
+  --bad:#B4231C; --badwash:#FDE8E6;
+  --grey:#5D6B7C; --greywash:#EDF0F3;
+  --shadow:0 1px 2px rgba(10,20,32,.06),0 8px 24px -12px rgba(10,20,32,.18);
+  --r:14px; --r2:10px;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",
+      Roboto,"Helvetica Neue",sans-serif;
+  --rail:232px;
+}
+@media (prefers-color-scheme:dark){
   :root{
-    /* A signal box at night: petrol blue-green, not neutral black. */
-    --bg:#0E1A24; --panel:#15242F; --panel-2:#1B2E3B; --line:#26404F;
-    --ink:#E4EDF2; --dim:#8BA6B6; --dimmer:#5C7484;
-    /* Railway signal aspects, mapped to the four triage acts. */
-    --clear:#3FBF7F; --caution:#E8A33D; --danger:#E4564A; --off:#4C6374;
-    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --bg:#0B1017; --wash:#121926; --raise:#151E2C; --line:#24303F; --line2:#1B2531;
+    --text:#E9EFF6; --dim:#93A1B3; --faint:#6B7B8E;
+    --blue:#5C9DFF; --bluewash:#16233A;
+    --ok:#4ECB9B; --okwash:#10261F;
+    --warn:#E8B45C; --warnwash:#2A2010;
+    --bad:#FF8478; --badwash:#2B1513;
+    --grey:#93A1B3; --greywash:#1B2531;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.7);
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
-  body{font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
-  a{color:inherit}
-  .wrap{max-width:1180px;margin:0 auto;padding:20px 18px 64px}
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--ui);
+  font-size:15px; line-height:1.47; -webkit-font-smoothing:antialiased;
+  font-feature-settings:"tnum" 1,"cv05" 1;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:6px}
+.num{font-variant-numeric:tabular-nums}
 
-  /* ---- masthead ---- */
-  header.bar{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;
-    justify-content:space-between;padding-bottom:14px;border-bottom:1px solid var(--line)}
-  .brand{display:flex;align-items:baseline;gap:12px}
-  .brand h1{margin:0;font-size:25px;font-weight:620;letter-spacing:-.015em}
-  .brand .sub{color:var(--dim);font-size:13.5px}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .chip{font-size:12.5px;color:var(--dim);border:1px solid var(--line);
-    border-radius:3px;padding:3px 8px;background:var(--panel)}
-  .chip b{color:var(--ink);font-weight:560}
+/* --- shell --------------------------------------------------------------- */
+.app{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);min-height:100%}
+nav{
+  border-right:1px solid var(--line);padding:18px 14px;position:sticky;top:0;
+  height:100vh;display:flex;flex-direction:column;gap:3px;background:var(--bg);
+}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
+.logo b{font-size:19px;font-weight:660;letter-spacing:-.022em}
+.logo i{
+  font-style:normal;width:26px;height:26px;border-radius:8px;background:var(--blue);
+  display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700;
+}
+.nav{
+  display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r2);
+  color:var(--dim);font-weight:520;font-size:14.5px;width:100%;text-align:left;
+}
+.nav:hover{background:var(--wash);color:var(--text)}
+.nav[aria-current=page]{background:var(--bluewash);color:var(--blue);font-weight:600}
+.nav svg{width:19px;height:19px;flex:none}
+.nav .n{margin-left:auto;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+.navfoot{margin-top:auto;padding:10px 11px;border-top:1px solid var(--line)}
+.navfoot div{font-size:12px;color:var(--faint);display:flex;justify-content:space-between;gap:8px}
 
-  /* ---- controls ---- */
-  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0 22px}
-  select,button{font-family:inherit;font-size:14px;color:var(--ink);
-    background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 11px}
-  select{min-width:230px}
-  button{cursor:pointer;background:var(--panel-2);font-weight:560}
-  button:hover{border-color:var(--dim)}
-  button:focus-visible,select:focus-visible{outline:2px solid var(--caution);outline-offset:2px}
-  .hint{color:var(--dimmer);font-size:13px}
+main{min-width:0;padding:26px 30px 70px;max-width:1040px}
+h1{font-size:27px;font-weight:660;letter-spacing:-.025em;margin:0 0 3px}
+.sub{color:var(--dim);font-size:14px;margin:0 0 22px}
+h2{font-size:13px;font-weight:620;color:var(--dim);margin:26px 0 9px}
 
-  /* ---- hero: the lead-time timeline ---- */
-  .hero{border:1px solid var(--line);background:var(--panel);padding:18px 20px 14px;margin-bottom:22px}
-  .hero h2{margin:0 0 3px;font-size:15.5px;font-weight:560}
-  .hero p.lede{margin:0 0 16px;color:var(--dim);font-size:13.5px;max-width:64ch}
-  .tl{position:relative;height:108px}
-  .tl .lane{position:absolute;left:96px;right:8px;height:2px;background:var(--line)}
-  .tl .lane.a{top:30px} .tl .lane.b{top:76px}
-  .tl .lbl{position:absolute;left:0;width:88px;text-align:right;font-size:12.5px;color:var(--dim)}
-  .tl .lbl.a{top:22px} .tl .lbl.b{top:68px}
-  .tl .pip{position:absolute;width:11px;height:11px;border-radius:50%;
-    transform:translate(-50%,-50%);border:2px solid var(--bg)}
-  .tl .pip.us{background:var(--clear)} .tl .pip.them{background:var(--dimmer)}
-  .tl .gap{position:absolute;top:31px;height:45px;border-left:1px dashed var(--caution);
-    border-right:1px dashed var(--caution);background:rgba(232,163,61,.08)}
-  .tl .gaplbl{position:absolute;top:44px;font-family:var(--mono);font-size:13px;
-    color:var(--caution);white-space:nowrap;padding:0 7px}
-  .tl .empty{position:absolute;inset:0;display:flex;align-items:center;
-    justify-content:center;color:var(--dimmer);font-size:13.5px;text-align:center;padding:0 20px}
+/* --- status answer ------------------------------------------------------- */
+.answer{
+  border-radius:var(--r);padding:20px 22px;margin-bottom:8px;
+  border:1px solid var(--line);background:var(--raise);box-shadow:var(--shadow);
+}
+.answer.ok{background:var(--okwash);border-color:transparent}
+.answer.warn{background:var(--warnwash);border-color:transparent}
+.answer.bad{background:var(--badwash);border-color:transparent}
+.answer .big{font-size:23px;font-weight:650;letter-spacing:-.022em;margin:0}
+.answer.ok .big{color:var(--ok)} .answer.warn .big{color:var(--warn)}
+.answer.bad .big{color:var(--bad)}
+.answer p{margin:5px 0 0;color:var(--dim);font-size:14px;max-width:62ch}
+.answer .row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
 
-  /* ---- two-column body ---- */
-  .cols{display:grid;grid-template-columns:1.15fr 1fr;gap:20px;align-items:start}
-  section.panel{border:1px solid var(--line);background:var(--panel)}
-  section.panel > h3{margin:0;padding:12px 16px;font-size:14px;font-weight:560;
-    border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
-    align-items:baseline}
-  section.panel > h3 span{color:var(--dimmer);font-size:12.5px;font-weight:400}
-  .body{padding:4px 0}
-  .none{padding:22px 16px;color:var(--dimmer);font-size:13.5px}
+/* --- pieces -------------------------------------------------------------- */
+.bullet{
+  font-weight:700;font-size:12.5px;letter-spacing:.01em;padding:4px 9px;
+  border-radius:7px;background:var(--text);color:var(--bg);white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.bullet.bus{background:var(--blue);color:#fff}
+.bullet.train{background:#0E7C5A;color:#fff}
+.bullet.flight{background:#6B3FD4;color:#fff}
+.bullet.event,.bullet.document{background:var(--greywash);color:var(--dim)}
+.tag{
+  font-size:11.5px;font-weight:640;padding:3px 8px;border-radius:99px;white-space:nowrap;
+}
+.t-SUPPRESS{background:var(--greywash);color:var(--grey)}
+.t-LOG{background:var(--bluewash);color:var(--blue)}
+.t-NOTIFY{background:var(--warnwash);color:var(--warn)}
+.t-INTERVENE{background:var(--badwash);color:var(--bad)}
+.btn{
+  padding:8px 14px;border-radius:10px;font-weight:580;font-size:14px;
+  background:var(--wash);border:1px solid var(--line);
+}
+.btn:hover{background:var(--line2)}
+.btn.pri{background:var(--blue);color:#fff;border-color:transparent}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.5;cursor:default}
+.list{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--raise)}
+.item{
+  display:flex;align-items:center;gap:13px;padding:13px 15px;width:100%;
+  text-align:left;border-bottom:1px solid var(--line2);
+}
+.item:last-child{border-bottom:0}
+.item:hover{background:var(--wash)}
+.item .body{min-width:0;flex:1}
+.item .body b{display:block;font-weight:580;font-size:14.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .body small{color:var(--faint);font-size:12.5px;
+  display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item time{color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums}
+.chev{color:var(--faint);flex:none}
+.star{flex:none;padding:6px;border-radius:8px;color:var(--faint)}
+.star[aria-pressed=true]{color:var(--warn)}
+.star:hover{background:var(--line2)}
+.empty{
+  border:1px dashed var(--line);border-radius:var(--r);padding:30px 24px;
+  text-align:center;color:var(--dim);font-size:14px;
+}
+.empty b{display:block;color:var(--text);font-size:15.5px;margin-bottom:5px;font-weight:600}
+.empty code{background:var(--wash);padding:2px 7px;border-radius:6px;font-size:13px;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
 
-  /* Findings are signal rows with an aspect bar, not cards. */
-  .finding{display:flex;gap:0;border-bottom:1px solid var(--line)}
-  .finding:last-child{border-bottom:0}
-  .aspect{width:4px;flex:0 0 4px;background:var(--off)}
-  .aspect.INTERVENE{background:var(--danger)}
-  .aspect.NOTIFY{background:var(--caution)}
-  .aspect.LOG{background:var(--clear)}
-  .aspect.SUPPRESS{background:var(--off)}
-  .fmain{padding:11px 16px;flex:1;min-width:0}
-  .frow1{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
-  .kind{font-weight:600;font-size:14.5px}
-  .route{font-family:var(--mono);font-size:13px;color:var(--ink);
-    background:var(--panel-2);border:1px solid var(--line);padding:1px 6px;border-radius:2px}
-  .act{font-size:12px;font-weight:600;padding:1px 7px;border-radius:2px;border:1px solid}
-  .act.INTERVENE{color:var(--danger);border-color:var(--danger)}
-  .act.NOTIFY{color:var(--caution);border-color:var(--caution)}
-  .act.LOG{color:var(--clear);border-color:var(--clear)}
-  .act.SUPPRESS{color:var(--dimmer);border-color:var(--off)}
-  .why{color:var(--dim);font-size:13px;margin-top:4px}
-  .ev{font-family:var(--mono);font-size:12.5px;color:var(--dimmer);margin-top:5px;
-    word-break:break-word}
-  .lead{color:var(--clear);font-size:12.5px;font-family:var(--mono);margin-top:5px}
+/* --- search -------------------------------------------------------------- */
+.searchbar{
+  display:flex;align-items:center;gap:11px;padding:13px 16px;border-radius:var(--r);
+  border:1px solid var(--line);background:var(--raise);box-shadow:var(--shadow);
+}
+.searchbar:focus-within{border-color:var(--blue)}
+.searchbar input{border:0;outline:0;background:none;color:var(--text);flex:1;font-size:16px}
+.searchbar input::placeholder{color:var(--faint)}
+.kbd{
+  font-size:11px;font-weight:600;color:var(--faint);border:1px solid var(--line);
+  border-radius:6px;padding:2px 6px;
+}
+.chips{display:flex;gap:7px;margin:14px 0 4px;flex-wrap:wrap}
+.chip{
+  padding:6px 12px;border-radius:99px;font-size:13px;font-weight:540;
+  border:1px solid var(--line);color:var(--dim);
+}
+.chip[aria-pressed=true]{background:var(--text);color:var(--bg);border-color:transparent}
+.grp{font-size:12px;font-weight:620;color:var(--faint);padding:14px 2px 7px}
+.hit[aria-selected=true]{background:var(--bluewash)}
+mark.q{background:var(--warnwash);color:inherit;border-radius:3px;padding:0 1px}
 
-  /* Itinerary legs + provenance */
-  .leg{padding:12px 16px;border-bottom:1px solid var(--line)}
-  .leg:last-child{border-bottom:0}
-  .leg h4{margin:0 0 3px;font-size:14.5px;font-weight:580}
-  .leg .meta{color:var(--dim);font-size:13px}
-  .fields{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
-  .field{font-size:12.5px;font-family:var(--mono);cursor:pointer;
-    border:1px solid var(--line);background:var(--panel-2);color:var(--dim);
-    padding:2px 7px;border-radius:2px}
-  .field:hover,.field[aria-expanded="true"]{border-color:var(--caution);color:var(--ink)}
-  .cite{margin-top:9px;padding:10px 12px;background:var(--bg);
-    border:1px solid var(--line);border-left:2px solid var(--caution);font-size:13px}
-  .cite .loc{color:var(--dim);font-size:12px;font-family:var(--mono);margin-bottom:5px}
-  .cite .snip{font-family:var(--mono);font-size:12.5px;color:var(--dim);
-    white-space:pre-wrap;word-break:break-word}
-  .cite mark{background:rgba(232,163,61,.28);color:var(--ink);padding:0 1px}
+/* --- sheet --------------------------------------------------------------- */
+.scrim{
+  position:fixed;inset:0;background:rgba(10,20,32,.34);opacity:0;pointer-events:none;
+  transition:opacity .2s;z-index:40;backdrop-filter:blur(2px);
+}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;top:0;right:0;height:100%;width:min(560px,100%);z-index:41;
+  background:var(--bg);border-left:1px solid var(--line);overflow-y:auto;
+  transform:translateX(100%);transition:transform .26s cubic-bezier(.32,.72,0,1);
+  box-shadow:var(--shadow);
+}
+.sheet.on{transform:none}
+.sheet:focus{outline:none}
+.sheethead{
+  position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);
+  padding:16px 20px;display:flex;align-items:center;gap:12px;z-index:2;
+}
+.sheethead b{font-size:17px;font-weight:640;letter-spacing:-.02em}
+.sheethead .x{margin-left:auto;padding:7px;border-radius:9px;color:var(--dim)}
+.sheethead .x:hover{background:var(--wash)}
+.sheetbody{padding:18px 20px 60px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;margin:4px 0}
+.kv dt{color:var(--faint)}
+.kv dd{margin:0;font-variant-numeric:tabular-nums}
+.quote{border-left:2.5px solid var(--line);padding:2px 0 2px 13px;margin:14px 0;
+  color:var(--text);font-size:14px}
+.quote b{display:block;font-size:11.5px;color:var(--faint);font-weight:620;margin-bottom:2px}
+.src{
+  display:block;width:100%;text-align:left;border:1px solid var(--line);
+  border-radius:var(--r2);padding:11px 13px;margin:8px 0;background:var(--raise);
+}
+.src:hover{border-color:var(--blue)}
+.src .loc{font-size:11.5px;color:var(--blue);font-weight:580}
+.src .snip{color:var(--dim);font-size:12.5px;margin-top:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.paper{
+  background:#FBFAF7;color:#16202B;border:1px solid var(--line);border-radius:var(--r2);
+  padding:15px 17px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+  line-height:1.7;white-space:pre-wrap;max-height:330px;overflow:auto;margin-top:9px;
+}
+.paper mark{background:#FFE7A3;color:#16202B;font-weight:700;border-radius:3px;
+  box-shadow:0 0 0 2px #E9A93A}
+.stops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.stop{font-size:12px;color:var(--dim);background:var(--wash);padding:4px 9px;border-radius:7px}
 
-  .draft{padding:12px 16px;border-bottom:1px solid var(--line)}
-  .draft:last-child{border-bottom:0}
-  .draft .subj{font-weight:580;font-size:14px}
-  .draft pre{margin:7px 0 9px;font-family:var(--mono);font-size:12.5px;color:var(--dim);
-    white-space:pre-wrap;word-break:break-word}
-  .pending{font-size:12px;color:var(--caution);border:1px solid var(--caution);
-    padding:1px 7px;border-radius:2px;display:inline-block}
+/* --- map ----------------------------------------------------------------- */
+.mapwrap{
+  border:1px solid var(--line);border-radius:var(--r);background:var(--wash);
+  overflow:hidden;position:relative;
+}
+.mapwrap svg{display:block;width:100%;height:auto}
+.mline{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.mstop{fill:var(--bg);stroke-width:2}
+.mveh{stroke:var(--bg);stroke-width:2.5;cursor:pointer}
+.mveh:hover{stroke-width:4}
+.mhit{fill:transparent;cursor:pointer}
+.mlabel{font:600 13px var(--ui);fill:var(--text);paint-order:stroke;
+  stroke:var(--bg);stroke-width:4px}
+.mpulse{fill:none;stroke-width:2.5;opacity:.9}
+@media (prefers-reduced-motion:no-preference){
+  .mpulse{animation:pulse 1.9s ease-out infinite}
+  @keyframes pulse{0%{r:7;opacity:.85}100%{r:19;opacity:0}}
+}
+.maplegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:11px;font-size:12.5px;
+  color:var(--dim)}
+.maplegend span{display:flex;align-items:center;gap:6px}
+.maplegend i{width:14px;height:4px;border-radius:2px;display:inline-block}
 
-  footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
-    color:var(--dimmer);font-size:12.5px;max-width:78ch}
-  @media (max-width:820px){
-    .cols{grid-template-columns:1fr}
-    .tl .lane{left:78px} .tl .lbl{width:70px}
+/* --- upload -------------------------------------------------------------- */
+.drop{
+  border:1.5px dashed var(--line);border-radius:var(--r);padding:22px 20px;
+  text-align:center;color:var(--dim);font-size:14px;background:var(--raise);
+}
+.drop.over{border-color:var(--blue);background:var(--bluewash);color:var(--blue)}
+.drop b{display:block;color:var(--text);font-weight:600;margin-bottom:3px;font-size:15px}
+
+/* --- audit --------------------------------------------------------------- */
+details.audit{border:1px solid var(--line);border-radius:var(--r2);margin-top:12px;
+  background:var(--raise)}
+details.audit summary{padding:11px 13px;cursor:pointer;font-size:13.5px;font-weight:560}
+details.audit pre{margin:0;padding:0 13px 13px;font-family:ui-monospace,Menlo,monospace;
+  font-size:11.5px;color:var(--dim);white-space:pre-wrap;max-height:260px;overflow:auto}
+.whynot{background:var(--wash);border-radius:var(--r2);padding:12px 14px;margin-top:12px;
+  font-size:13.5px;color:var(--dim)}
+.whynot b{display:block;color:var(--text);font-size:12px;font-weight:620;margin-bottom:3px}
+
+/* --- evidence table ------------------------------------------------------ */
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line2)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--faint);font-weight:560;font-size:11.5px}
+tr.best td{color:var(--ok);font-weight:600}
+td.na{color:var(--faint);text-align:left}
+
+/* --- progress ------------------------------------------------------------ */
+.prog{height:3px;background:var(--line2);border-radius:99px;overflow:hidden;margin:16px 0 0}
+.prog div{height:100%;background:var(--blue);width:0;transition:width .3s}
+
+/* --- mobile -------------------------------------------------------------- */
+@media (max-width:860px){
+  :root{--rail:0px}
+  .app{grid-template-columns:1fr}
+  nav{
+    position:fixed;bottom:0;left:0;right:0;top:auto;height:auto;flex-direction:row;
+    border-right:0;border-top:1px solid var(--line);padding:6px 6px 22px;z-index:30;
   }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .logo,.navfoot{display:none}
+  .nav{flex-direction:column;gap:3px;font-size:10.5px;padding:7px 4px;justify-content:center}
+  .nav .n{display:none}
+  main{padding:20px 16px 110px}
+  h1{font-size:23px}
+  .sheet{width:100%;border-left:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<div class="wrap">
-
-  <header class="bar">
-    <div class="brand">
-      <h1>Dispatch</h1>
-      <span class="sub">Pittsburgh transit disruption board</span>
+<div class="app">
+  <nav aria-label="Sections">
+    <div class="logo"><i>D</i><b>Dispatch</b></div>
+    <button class="nav" data-v="now" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><path d="M3 12h4l2-7 3 14 2.5-9 1.5 4H21"/></svg>
+      Now<span class="n" id="n-now"></span></button>
+    <button class="nav" data-v="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+      Search<span class="n">⌘K</span></button>
+    <button class="nav" data-v="map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2z"/>
+        <path d="M9 3v16M15 5v16"/></svg>
+      Map<span class="n" id="n-map"></span></button>
+    <button class="nav" data-v="trips">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><rect x="4" y="3" width="16" height="15" rx="3"/>
+        <path d="M8 21h8M9 8h6M9 12h4"/></svg>
+      Trips<span class="n" id="n-trips"></span></button>
+    <button class="nav" data-v="evidence">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      Evidence</button>
+    <div class="navfoot">
+      <div><span>backend</span><span id="f-backend">—</span></div>
+      <div><span>feed clock</span><span id="f-clock" class="num">—</span></div>
     </div>
-    <div class="chips">
-      <span class="chip">triage <b id="c-backend">rules</b></span>
-      <span class="chip">signals <b id="c-signals">0</b></span>
-      <span class="chip">surfaced <b id="c-surfaced">0</b></span>
-      <span class="chip">suppressed <b id="c-suppressed">0</b></span>
-      <span class="chip" id="c-status">idle</span>
-    </div>
-  </header>
-
-  <div class="controls">
-    <select id="scenario" aria-label="Recorded session to replay"></select>
-    <button id="run">Replay session</button>
-    <span class="hint" id="note">Pick a recorded session and replay it.</span>
-  </div>
-
-  <div class="hero">
-    <h2>How early did we know?</h2>
-    <p class="lede">Each pair of marks is one disruption: when Dispatch detected it from raw
-      vehicle telemetry, and when the agency published a service alert about it. The
-      shaded span is the head start.</p>
-    <div class="tl" id="timeline"><div class="empty">No disruptions detected yet.</div></div>
-  </div>
-
-  <div class="cols">
-    <section class="panel">
-      <h3>Findings <span id="f-count">0</span></h3>
-      <div class="body" id="findings"><div class="none">Nothing detected yet.</div></div>
-    </section>
-
-    <div>
-      <section class="panel" style="margin-bottom:20px">
-        <h3>Itinerary <span>extracted from documents</span></h3>
-        <div class="body" id="itinerary"><div class="none">No itinerary loaded.</div></div>
-      </section>
-
-      <section class="panel">
-        <h3>Drafted actions <span>awaiting your approval</span></h3>
-        <div class="body" id="drafts"><div class="none">Nothing drafted.</div></div>
-      </section>
-    </div>
-  </div>
-
-  <footer>
-    Dispatch never sends anything on its own. Escalation drafts an email and a calendar
-    change and stops there. Amtrak data via Amtraker (ODC-By); transit data via
-    Pittsburgh Regional Transit GTFS-Realtime.
-  </footer>
+  </nav>
+  <main id="main"></main>
 </div>
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="sheettitle">
+  <div class="sheethead"><b id="sheettitle">Details</b>
+    <button class="x" id="sheetx" aria-label="Close">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button></div>
+  <div class="sheetbody" id="sheetbody"></div>
+</aside>
 
 <script>
+/* --------------------------------------------------------------------------
+   One rule about data in this UI: nothing is asserted without a source. Every
+   search result and every leg says whether Dispatch knows it from the live
+   feed or from a document the user gave it, and every claim in a detail sheet
+   can be opened to the exact characters it came from.
+   ----------------------------------------------------------------------- */
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
-  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const clock = t => t ? new Date(t*1000).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "--:--";
-const mins = s => (s==null ? null : Math.round(s/60));
-
-let docCache = {};
-
-async function loadScenarios(){
-  const r = await fetch("/api/scenarios"); const list = await r.json();
-  const sel = $("#scenario");
-  sel.innerHTML = list.map(s =>
-    `<option value="${esc(s.name)}">${esc(s.name)} — ${s.snapshots} snapshots</option>`).join("");
-  const setNote = () => {
-    const s = list.find(x => x.name === sel.value);
-    $("#note").textContent = s ? s.note : "";
-  };
-  sel.addEventListener("change", setNote); setNote();
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"]/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hhmm = t => t ? new Date(t*1000).toLocaleTimeString([],
+  {hour:"numeric",minute:"2-digit"}) : "";
+const mins = s => s==null ? null : Math.round(s/60);
+/* Extraction labels arrive machine-shaped ("transit 61C", "rail 43") because
+   that is what the schema calls them. Riders read route numbers, so relabel
+   for display only -- the stored value is untouched. */
+const PRETTY = {transit:"Route", rail:"Train", flight:"Flight", bus:"Route"};
+function nice(label){
+  const m = /^(transit|rail|flight|bus)\s+(.+)$/i.exec(String(label||""));
+  return m ? `${PRETTY[m[1].toLowerCase()]} ${m[2]}` : (label||"");
 }
 
-$("#run").addEventListener("click", async () => {
-  docCache = {};
-  await fetch("/api/replay", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({scenario: $("#scenario").value, speed: 90})
-  });
-});
+let ST=null, CAT=null, VIEW="now", Q="", MODE="all", SEL=0, POLL=null, DOCS={};
+/* Upload result lives in state, not in the DOM. The view re-renders on every
+   poll, so anything written straight into the page gets wiped a moment later. */
+let UPLOAD=null;
+let FOLLOW = new Set();
+try{ FOLLOW = new Set(JSON.parse(localStorage.getItem("dispatch.follow")||"[]")); }catch(e){}
+const saveFollow = () => { try{
+  localStorage.setItem("dispatch.follow", JSON.stringify([...FOLLOW])); }catch(e){} };
 
-function drawTimeline(findings, alerts){
-  const el = $("#timeline");
-  const pairs = findings.filter(f => f.lead_time_s != null);
-  if(!pairs.length){
-    el.innerHTML = `<div class="empty">${findings.length
-      ? "Detected "+findings.length+" signal(s). No agency alert published to compare against yet."
-      : "No disruptions detected yet."}</div>`;
+const ICON = {
+  bus:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M4 10h16M7 20v-2M17 20v-2"/></svg>',
+  train:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="3" width="14" height="13" rx="3"/><path d="M5 10h14M8 20l2-4M16 20l-2-4"/></svg>',
+  flight:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 13l20-6-8 14-2-6z"/></svg>',
+  document:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6M9 16h4"/></svg>',
+  event:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 8v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>',
+};
+const chev = '<svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 5 7 7-7 7"/></svg>';
+const starSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.6l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.9l6-.8z"/></svg>';
+
+/* --- the answer at the top ------------------------------------------------ */
+function answer(){
+  const fs = (ST?.findings)||[];
+  const acted = fs.filter(f => f.verdict.act==="INTERVENE");
+  const notified = fs.filter(f => f.verdict.act==="NOTIFY");
+  const leads = fs.filter(f => ["NOTIFY","INTERVENE"].includes(f.verdict.act)
+    && f.lead_time_s!=null).map(f=>f.lead_time_s).sort((a,b)=>a-b);
+  const med = leads.length ? (leads[Math.floor(leads.length/2)]/60).toFixed(1) : null;
+
+  if(!fs.length){
+    return `<div class="answer"><p class="big">Watching your trips</p>
+      <p>Nothing has crossed a threshold. Dispatch is reading vehicle telemetry
+      and comparing it against the legs it found in your documents.</p>
+      <div class="row"><button class="btn pri" data-run>Replay a recording</button></div></div>`;
+  }
+  if(acted.length){
+    const f = acted[0], leg = f.item;
+    return `<div class="answer bad"><p class="big">You're going to miss ${
+      esc(leg? nice(leg.label) : f.signal.route_id)}</p>
+      <p>A ${esc(f.signal.kind.toLowerCase())} on ${esc(f.signal.route_id)}${
+        leg&&leg.depart_at? ", which you needed at "+hhmm(leg.depart_at):""}, and
+      the slack is gone.${acted.length>1? ` ${acted.length} of your legs are
+      affected.`:""} A message is drafted, waiting for you to send it.${
+        med? ` Spotted ${med} min before the agency published anything.`:""}</p>
+      <div class="row"><button class="btn pri" data-open="event:${
+        esc(f.signal.signal_id)}">See why</button>
+        <button class="btn" data-v="trips">Review drafts</button></div></div>`;
+  }
+  if(notified.length){
+    const f = notified[0];
+    return `<div class="answer warn"><p class="big">Tight, but you can still make it</p>
+      <p>${esc(f.signal.kind.toLowerCase())} on ${esc(f.signal.route_id)}${
+        f.item? " affects "+esc(nice(f.item.label)):""}. You have slack for now.${
+        med? ` Detected ${med} min ahead of the agency.`:""}</p>
+      <div class="row"><button class="btn pri" data-open="event:${
+        esc(f.signal.signal_id)}">See why</button></div></div>`;
+  }
+  return `<div class="answer ok"><p class="big">You're clear</p>
+    <p>${fs.length} anomalies measured on the network, none of them on a leg you
+    are travelling. Dispatch kept quiet about all of them.${
+      med? ` Median lead when it does speak: ${med} min.`:""}</p>
+    <div class="row"><button class="btn" data-v="evidence">How it decides</button></div></div>`;
+}
+
+/* --- views ---------------------------------------------------------------- */
+function viewNow(){
+  const fs = ((ST?.findings)||[]).slice()
+    .sort((a,b)=>b.signal.detected_at-a.signal.detected_at);
+  const followed = (CAT?.routes||[]).filter(r=>FOLLOW.has("route:"+r.id));
+  const p = ST?.progress||{done:0,total:0};
+
+  let h = `<h1>Now</h1><p class="sub">Live picture of your trips and the network.</p>`;
+  h += answer();
+  if(ST?.status==="running")
+    h += `<div class="prog"><div style="width:${p.total?100*p.done/p.total:0}%"></div></div>`;
+
+  if(followed.length){
+    h += `<h2>Following</h2><div class="list">` + followed.map(r=>{
+      const bad = fs.some(f=>f.signal.route_id===r.id
+        && ["NOTIFY","INTERVENE"].includes(f.verdict.act));
+      return `<button class="item" data-open="route:${esc(r.id)}">
+        <span class="bullet bus">${esc(r.id)}</span>
+        <span class="body"><b>${esc(r.subtitle)}</b>
+          <small>${r.vehicles} vehicles · every ${r.headway_min} min</small></span>
+        <span class="tag ${bad?"t-NOTIFY":"t-SUPPRESS"}">${bad?"disrupted":"normal"}</span>
+        ${chev}</button>`;
+    }).join("") + `</div>`;
+  }
+
+  h += `<h2>Activity</h2>`;
+  h += fs.length ? `<div class="list">` + fs.map(f=>{
+    const lead = mins(f.lead_time_s);
+    const surfaced = ["NOTIFY","INTERVENE"].includes(f.verdict.act);
+    return `<button class="item" data-open="event:${esc(f.signal.signal_id)}">
+      <span class="bullet bus">${esc(f.signal.route_id||"—")}</span>
+      <span class="body"><b>${esc(f.signal.kind)}${
+        surfaced&&lead!=null?` · ${lead>=1?lead+" min":"<1 min"} before the agency`:""}</b>
+        <small>${esc(f.verdict.reason_code)}${f.item?" · "+esc(nice(f.item.label)):""}</small></span>
+      <time>${hhmm(f.signal.detected_at)}</time>
+      <span class="tag t-${f.verdict.act}">${f.verdict.act.toLowerCase()}</span>
+      ${chev}</button>`;
+  }).join("") + `</div>`
+   : `<div class="empty"><b>No activity yet</b>Start a replay, or run
+      <code>python3 -m dispatch.cli demo</code></div>`;
+  return h;
+}
+
+function score(text, q){
+  const t = text.toLowerCase(), i = t.indexOf(q);
+  if(i === 0) return 3; if(i > 0) return 2;
+  return q.split("").every(c => t.includes(c)) ? 1 : 0;
+}
+function hl(text, q){
+  if(!q) return esc(text);
+  const i = text.toLowerCase().indexOf(q);
+  if(i < 0) return esc(text);
+  return esc(text.slice(0,i)) + "<mark class='q'>" + esc(text.slice(i,i+q.length))
+    + "</mark>" + esc(text.slice(i+q.length));
+}
+function results(){
+  if(!CAT) return [];
+  const q = Q.trim().toLowerCase();
+  const pool = [...CAT.routes, ...CAT.legs, ...CAT.vehicles, ...CAT.documents,
+                ...CAT.events];
+  return pool
+    .filter(x => MODE==="all" || x.mode===MODE)
+    .map(x => ({x, s: q ? Math.max(score(nice(x.title),q), score(x.subtitle||"",q)*0.9,
+                 score(x.route||"",q)) : 1}))
+    .filter(r => r.s > 0)
+    .sort((a,b) => b.s-a.s || a.x.title.localeCompare(b.x.title))
+    .slice(0, 60).map(r => r.x);
+}
+const GROUPS = {route:"Routes",leg:"Your trips",vehicle:"Vehicles",
+                document:"Documents",event:"Events"};
+function viewSearch(){
+  const q = Q.trim().toLowerCase(), rows = results();
+  let h = `<h1>Search</h1>
+  <p class="sub">Buses and light rail come from live telemetry. Trains and flights
+  come from the documents you gave Dispatch.</p>
+  <div class="searchbar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--faint)"
+      stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/>
+      <path d="m16 16 4.5 4.5"/></svg>
+    <input id="q" placeholder="Route 61C, Train 43, AA1729, a stop, a document…"
+      value="${esc(Q)}" autocomplete="off" spellcheck="false"
+      aria-label="Search routes, trips, vehicles and documents">
+    <span class="kbd">esc</span>
+  </div>
+  <div class="chips">` +
+  [["all","Everything"],["bus","Buses"],["train","Trains"],["flight","Flights"],
+   ["document","Documents"],["event","Events"]].map(([m,l])=>
+    `<button class="chip" data-mode="${m}" aria-pressed="${MODE===m}">${l}</button>`
+  ).join("") + `</div>`;
+
+  if(!rows.length){
+    h += `<div class="empty"><b>Nothing matches “${esc(Q)}”</b>
+      Try a route number like <code>61C</code>, a train like <code>43</code>,
+      or a flight like <code>AA1729</code>.</div>`;
+    return h;
+  }
+  let last = null, i = -1;
+  h += `<div class="list" role="listbox">`;
+  for(const x of rows){
+    if(x.kind !== last){ last = x.kind;
+      h += `</div><div class="grp">${GROUPS[x.kind]||x.kind}</div><div class="list" role="listbox">`; }
+    i++;
+    h += `<button class="item hit" role="option" data-i="${i}"
+        aria-selected="${i===SEL}" data-open="${esc(x.kind)}:${esc(x.id)}">
+      <span class="bullet ${esc(x.mode)}">${
+        x.kind==="route"||x.kind==="vehicle" ? esc(x.route||x.id)
+          : (ICON[x.mode]||ICON.event)}</span>
+      <span class="body"><b>${hl(nice(x.title),q)}</b><small>${hl(x.subtitle||"",q)}</small></span>
+      ${x.depart_at?`<time>${hhmm(x.depart_at)}</time>`:""}
+      <span class="tag t-SUPPRESS">${esc(x.source)}</span>${chev}</button>`;
+  }
+  h += `</div>`;
+  return h.replace(/^<\/div>/, "");
+}
+
+const RCOLOR = ["#0B5CD5","#0E7C5A","#B4231C","#6B3FD4","#8A5200","#0F7B8A"];
+/* Colour by position in a stable sorted list, not by hashing the route id.
+   Hashing looked elegant and put three of four Pittsburgh routes on the same
+   red, which made the map unreadable. Distinctness matters more than
+   cleverness when the colour is the only thing telling two lines apart. */
+let _rkeys = [];
+function colorFor(id){
+  if(!_rkeys.length && CAT?.routes) _rkeys = CAT.routes.map(r=>r.id).sort();
+  const i = _rkeys.indexOf(String(id));
+  return RCOLOR[(i < 0 ? 0 : i) % RCOLOR.length];
+}
+
+/* A map drawn from coordinates rather than tiles.
+   No API key, no tile server, no attribution burden, and it still renders when
+   the venue wifi has gone. The projection is a plain equirectangular fit to the
+   bounding box of the routes, with the x axis scaled by cos(latitude) so shapes
+   are not stretched -- at city scale that is indistinguishable from Mercator. */
+function viewMap(){
+  const routes = (CAT?.routes||[]).filter(r => (r.coords||[]).length > 1);
+  if(!routes.length) return `<h1>Map</h1><p class="sub">Live vehicle positions.</p>
+    <div class="empty"><b>No geometry loaded</b>Start a replay to see vehicles.</div>`;
+
+  const pts = routes.flatMap(r=>r.coords);
+  const lats = pts.map(p=>p[0]), lons = pts.map(p=>p[1]);
+  let la0=Math.min(...lats), la1=Math.max(...lats);
+  let lo0=Math.min(...lons), lo1=Math.max(...lons);
+  const padLa=(la1-la0)*0.10||0.01, padLo=(lo1-lo0)*0.10||0.01;
+  la0-=padLa; la1+=padLa; lo0-=padLo; lo1+=padLo;
+  const W=1000, k=Math.cos((la0+la1)/2*Math.PI/180);
+  const H=Math.max(360, Math.min(820, W*(la1-la0)/((lo1-lo0)*k)));
+  const X=lon=>(lon-lo0)/(lo1-lo0)*W;
+  const Y=lat=>(la1-lat)/(la1-la0)*H;
+
+  const troubled = new Set(((ST?.findings)||[])
+    .filter(f=>["NOTIFY","INTERVENE"].includes(f.verdict.act))
+    .map(f=>f.signal.route_id));
+
+  let g = "";
+  for(const r of routes){
+    const c = colorFor(r.id);
+    const d = r.coords.map((p,i)=>`${i?"L":"M"}${X(p[1]).toFixed(1)} ${Y(p[0]).toFixed(1)}`).join("");
+    g += `<path class="mline" d="${d}" stroke="${c}"/>`;
+    g += r.coords.map(p=>
+      `<circle class="mstop" cx="${X(p[1]).toFixed(1)}" cy="${Y(p[0]).toFixed(1)}"
+        r="3.4" stroke="${c}"/>`).join("");
+    const end = r.coords[r.coords.length-1];
+    g += `<text class="mlabel" x="${(X(end[1])+9).toFixed(1)}"
+      y="${(Y(end[0])+4).toFixed(1)}">${esc(r.id)}</text>`;
+  }
+  const vehs = (CAT?.vehicles||[]).filter(v=>v.lat!=null&&v.lon!=null);
+  for(const v of vehs){
+    const c = colorFor(v.route), x=X(v.lon).toFixed(1), y=Y(v.lat).toFixed(1);
+    if(troubled.has(v.route))
+      g += `<circle class="mpulse" cx="${x}" cy="${y}" r="7" stroke="${c}"/>`;
+    g += `<circle class="mveh" cx="${x}" cy="${y}" r="6.5" fill="${c}"
+      data-open="vehicle:${esc(v.id)}"><title>${esc(v.id)} · ${esc(v.subtitle)}</title></circle>`;
+  }
+
+  return `<h1>Map</h1><p class="sub">${vehs.length} vehicles on ${routes.length}
+    routes, straight from the agency feed. Tap one for its position and status.</p>
+    <div class="mapwrap"><svg viewBox="0 0 ${W} ${H.toFixed(0)}"
+      role="img" aria-label="Map of tracked routes and vehicle positions">
+      ${g}</svg></div>
+    <div class="maplegend">${routes.map(r=>
+      `<span><i style="background:${colorFor(r.id)}"></i>${esc(r.id)}${
+        troubled.has(r.id)?" · disrupted":""}</span>`).join("")}</div>
+    <p class="sub" style="margin-top:14px">Positions are drawn from coordinates,
+    not map tiles, so this works with no network and no API key. Nothing is
+    smoothed or interpolated.</p>`;
+}
+
+function uploadPanel(){
+  if(!UPLOAD) return "";
+  if(UPLOAD.busy) return `<div class="empty" style="padding:16px">reading ${
+    esc(UPLOAD.busy)}…</div>`;
+  if(UPLOAD.error) return `<div class="empty"><b>${esc(UPLOAD.error)}</b>
+    Supported: .eml .txt .ics .csv .html .pdf</div>`;
+  const r = UPLOAD;
+  return `<div class="list" style="margin-top:10px">
+    <div class="item"><span class="bullet document">${ICON.document}</span>
+      <span class="body"><b>${esc(r.document.source_id)}</b>
+        <small>${esc(r.document.source_type)} · ${r.document.chars} characters ·
+        ${r.found} leg${r.found===1?"":"s"} found, ${r.added} new</small></span>
+      <span class="tag t-LOG">parsed</span></div>
+    ${r.legs.map(l=>`<button class="item" data-open="leg:${esc(l.item_id)}">
+      <span class="bullet ${l.kind==="rail"?"train":l.kind==="flight"?"flight":"bus"}">${
+        esc(l.route_hint||"—")}</span>
+      <span class="body"><b>${esc(nice(l.label))}</b>
+        <small>read from ${esc(r.document.source_id)}</small></span>
+      ${chev}</button>`).join("")}</div>`;
+}
+
+function viewTrips(){
+  const legs = CAT?.legs||[], drafts = ST?.drafts||[];
+  let h = `<h1>Trips</h1><p class="sub">Every leg Dispatch read out of your
+    documents. Open one to see the exact characters it came from.</p>`;
+  h += legs.length ? `<div class="list">` + legs.map(l=>`
+    <button class="item" data-open="leg:${esc(l.id)}">
+      <span class="bullet ${esc(l.mode)}">${l.route?esc(l.route):(ICON[l.mode]||ICON.event)}</span>
+      <span class="body"><b>${esc(nice(l.title))}</b><small>${esc(l.subtitle)}</small></span>
+      ${l.depart_at?`<time>${hhmm(l.depart_at)}</time>`:`<time>no time read</time>`}
+      ${chev}</button>`).join("") + `</div>`
+   : `<div class="empty"><b>No trips yet</b>Dispatch reads
+      <code>fixtures/docs/</code> when a replay starts.</div>`;
+
+  h += `<h2>Add a document</h2>
+    <div class="drop" id="drop"><b>Drop a confirmation email, ticket or boarding pass</b>
+      .eml, .txt, .ics, .csv, .html or .pdf. Dispatch parses it with the same
+      adapters it uses for everything else.
+      <div style="margin-top:12px"><button class="btn" id="pick">Choose a file</button></div>
+      <input type="file" id="file" hidden
+        accept=".eml,.txt,.md,.ics,.ical,.csv,.tsv,.html,.htm,.pdf"></div>
+    <div id="upres">${uploadPanel()}</div>`;
+
+  h += `<h2>Drafted messages</h2>`;
+  h += drafts.length ? drafts.map(d=>`<div class="list"><div class="item">
+      <span class="body"><b>${esc(d.subject)}</b><small>held for your approval</small></span>
+      <span class="tag t-NOTIFY">not sent</span></div>
+      <div style="padding:13px 15px;color:var(--dim);font-size:13.5px;
+        white-space:pre-wrap;border-top:1px solid var(--line2)">${esc(d.body)}</div>
+    </div>`).join("")
+   : `<div class="empty">Nothing drafted. Dispatch writes a message only when a
+      leg is threatened and the slack is gone, and never sends it for you.</div>`;
+  return h;
+}
+
+async function viewEvidence(){
+  let arms = [];
+  try{ arms = (await (await fetch("/api/eval")).json()).arms||[]; }catch(e){}
+  const best = Math.max(0, ...arms.map(a=>a.f1||0));
+  let h = `<h1>Evidence</h1><p class="sub">The same recording and the same
+    itinerary through three different triage decisions. The only variable is
+    who decides.</p>`;
+  h += arms.length ? `<div class="list" style="padding:6px 14px 10px"><table>
+    <tr><th>arm</th><th>caught</th><th>false alarms</th><th>missed</th>
+        <th>precision</th><th>recall</th><th>F1</th><th>alerts/hr</th></tr>` +
+    arms.map(a=>{
+      if((a.note||"").startsWith("did not run"))
+        return `<tr><td>${esc(a.arm)}</td><td colspan="7" class="na">${esc(a.note)}</td></tr>`;
+      return `<tr class="${a.f1===best?"best":""}"><td>${esc(a.arm)}</td>
+        <td>${a.tp}</td><td>${a.fp+(a.spurious||0)}</td><td>${a.fn}</td>
+        <td>${a.precision.toFixed(2)}</td><td>${a.recall.toFixed(2)}</td>
+        <td>${a.f1.toFixed(2)}</td><td>${a.alerts_per_hour.toFixed(2)}</td></tr>`;
+    }).join("") + `</table></div>`
+   : `<div class="empty"><b>Not scored yet</b>Run
+      <code>python3 -m dispatch.cli eval</code></div>`;
+
+  h += `<h2>What the decisions mean</h2><div class="list">` +
+  [["SUPPRESS","Normal operations misread as a fault. A bus sitting at its terminal is doing its job."],
+   ["LOG","A real disruption, but not on a leg you are travelling. Recorded, and you are not told."],
+   ["NOTIFY","Affects one of your legs, and you still have slack to absorb it."],
+   ["INTERVENE","Affects a leg and the slack is gone. Drafts a message, and waits for you."]]
+  .map(([k,v])=>`<div class="item"><span class="tag t-${k}">${k.toLowerCase()}</span>
+    <span class="body"><small style="color:var(--dim);white-space:normal">${v}</small></span>
+  </div>`).join("") + `</div>`;
+  return h;
+}
+
+/* --- sheets --------------------------------------------------------------- */
+function openSheet(title, html){
+  $("#sheettitle").innerHTML = title;
+  $("#sheetbody").innerHTML = html;
+  $("#sheet").classList.add("on"); $("#scrim").classList.add("on");
+  // Lock the page behind the sheet. Without this the list underneath keeps
+  // scrolling under your finger, which feels broken on a phone, and the
+  // sheet is position:fixed so anything trying to scroll a child into view
+  // ends up fighting the page scroll instead.
+  document.body.style.overflow = "hidden";
+  // Focus the panel itself, on the next tick.
+  //
+  // Both halves matter. Focusing the close button meant that opening a result
+  // with Enter moved focus onto a button *during* that same keydown, and the
+  // browser then activated the newly focused button with the same keypress --
+  // the sheet flashed open and shut. Deferring past the current key sequence
+  // fixes that, and focusing the dialog rather than a control inside it is
+  // also what a screen reader wants on open.
+  setTimeout(() => $("#sheet").focus({preventScroll:true}), 0);
+}
+/* Deep links, so an event or a trip can be pasted into a message and open
+   straight to it. */
+function setHash(token){
+  if(location.hash.slice(1) !== token)
+    history.replaceState(null, "", token ? "#"+token : location.pathname);
+}
+function closeSheet(){
+  $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on");
+  document.body.style.overflow = "";
+  setHash("");
+}
+function find(kind,id){
+  if(!CAT) return null;
+  const pool = {route:CAT.routes,leg:CAT.legs,vehicle:CAT.vehicles,
+                document:CAT.documents,event:CAT.events}[kind]||[];
+  return pool.find(x=>String(x.id)===String(id));
+}
+function open(token){
+  setHash(token);
+  const [kind, ...rest] = token.split(":"); const id = rest.join(":");
+  if(kind === "event") return openEvent(id);
+  if(kind === "route") return openRoute(id);
+  if(kind === "leg")   return openLeg(id);
+  if(kind === "vehicle") return openVehicle(id);
+  if(kind === "document") return openDoc(id);
+}
+function openEvent(sigId){
+  const f = (ST?.findings||[]).find(x=>x.signal.signal_id===sigId);
+  if(!f) return;
+  const v=f.verdict, ev=f.signal.evidence||{}, lead=mins(f.lead_time_s);
+  let h = `<span class="tag t-${v.act}">${v.act.toLowerCase()}</span>
+    <div class="quote"><b>${esc(v.reason_code)} · decided by ${esc(v.backend)}</b>
+      ${esc(v.rationale||"no rationale returned")}</div><dl class="kv">
+      <dt>route</dt><dd>${esc(f.signal.route_id)}</dd>
+      <dt>vehicle</dt><dd>${esc(f.signal.vehicle_id)}</dd>
+      <dt>noticed</dt><dd>${hhmm(f.signal.detected_at)}</dd>
+      <dt>began</dt><dd>${hhmm(f.signal.first_seen_at)}</dd>
+      <dt>confidence</dt><dd>${(v.confidence??0).toFixed(2)}</dd>`;
+  for(const [k,val] of Object.entries(ev)) h += `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`;
+  h += lead!=null && ["NOTIFY","INTERVENE"].includes(v.act)
+    ? `<dt>vs agency</dt><dd style="color:var(--ok)">${lead} min earlier</dd>`
+    : `<dt>vs agency</dt><dd class="na">nothing published</dd>`;
+  h += `</dl>`;
+  if(f.item) h += `<div class="quote"><b>threatens</b>${esc(nice(f.item.label))}${
+    f.item.depart_at? " departing "+hhmm(f.item.depart_at):""}</div>`;
+  const prov = (f.signal.provenance||[]).concat(
+    f.item? Object.values(f.item.field_provenance||{}) : []);
+  if(prov.length){
+    h += `<h2>Where this came from</h2>`;
+    prov.forEach((p,i)=>{ h += `<button class="src" data-prov="${i}">
+      <span class="loc">${esc(p.source_type)} · ${esc(p.locator)}</span>
+      <div class="snip">${esc(p.snippet||"")}</div></button>`; });
+    h += `<div id="paper"></div>`;
+  }
+  h += whyNot(f);
+  if(v.request_json || v.response_raw){
+    h += `<details class="audit"><summary>Audit trail: what the triage stage
+      saw and said</summary>
+      <pre>REQUEST\n${esc(v.request_json||"(none)")}\n\nRESPONSE\n${
+        esc(v.response_raw||"(none)")}</pre></details>`;
+  }
+  openSheet(`${esc(f.signal.kind)} on ${esc(f.signal.route_id)}`, h);
+  window.__prov = prov;
+}
+/* For anything Dispatch chose not to tell you about, say what would have had
+   to be different. Suppression is the hard half of this product, so it should
+   be legible rather than silent. */
+function whyNot(f){
+  const v=f.verdict, ev=f.signal.evidence||{};
+  if(["NOTIFY","INTERVENE"].includes(v.act)) return "";
+  const map = {
+    NOT_ON_ITINERARY: `You have no leg on ${esc(f.signal.route_id)}. This would
+      have reached you if one of your trips used this route.`,
+    TERMINAL_LAYOVER: `The vehicle is sitting at a terminal stop, which is where
+      layovers happen. This would have surfaced had it stopped mid-route.`,
+    AMPLE_SLACK: `Your leg still has more than 45 minutes of slack. It escalates
+      to notify under 45, and to intervene under 15.`,
+    ALTERNATIVE_EXISTS: `This leg is marked as a backup or return, so it is
+      capped at notify no matter how bad the disruption gets.`,
+    TIMEPOINT_HOLD: `Stopped at a mid-route stop with no drift, which is a
+      scheduled hold rather than a fault.`,
+  };
+  const why = map[v.reason_code] ||
+    `The triage stage returned ${v.act.toLowerCase()} with reason
+     ${esc(v.reason_code)}.`;
+  return `<div class="whynot"><b>Why you weren't told</b>${why}</div>`;
+}
+
+function openRoute(id){
+  const r = find("route",id); if(!r) return;
+  const evs = (ST?.findings||[]).filter(f=>f.signal.route_id===id);
+  const veh = (CAT?.vehicles||[]).filter(v=>v.route===id);
+  const on = FOLLOW.has("route:"+id);
+  let h = `<button class="btn ${on?"":"pri"}" data-follow="route:${esc(id)}">
+      ${on?"Following":"Follow this route"}</button>
+    <dl class="kv" style="margin-top:16px">
+      <dt>service</dt><dd>every ${r.headway_min} min</dd>
+      <dt>vehicles live</dt><dd>${r.vehicles}</dd>
+      <dt>open events</dt><dd>${evs.length}</dd>
+      <dt>source</dt><dd>${esc(r.source)}</dd></dl>
+    <h2>Stops</h2><div class="stops">${
+      r.stops.map(s=>`<span class="stop">${esc(s)}</span>`).join("")}</div>`;
+  if(evs.length){ h += `<h2>Events on this route</h2><div class="list">` +
+    evs.map(f=>`<button class="item" data-open="event:${esc(f.signal.signal_id)}">
+      <span class="body"><b>${esc(f.signal.kind)}</b>
+        <small>${esc(f.verdict.reason_code)}</small></span>
+      <time>${hhmm(f.signal.detected_at)}</time>
+      <span class="tag t-${f.verdict.act}">${f.verdict.act.toLowerCase()}</span>
+      ${chev}</button>`).join("") + `</div>`; }
+  if(veh.length){ h += `<h2>Vehicles</h2><div class="list">` +
+    veh.slice(0,8).map(v=>`<button class="item" data-open="vehicle:${esc(v.id)}">
+      <span class="body"><b>${esc(v.id)}</b><small>${esc(v.subtitle)}</small></span>
+      ${chev}</button>`).join("") + `</div>`; }
+  openSheet(`<span class="bullet bus">${esc(id)}</span>`, h);
+}
+function openVehicle(id){
+  const v = find("vehicle",id); if(!v) return;
+  openSheet(esc(id), `<dl class="kv">
+    <dt>route</dt><dd>${esc(v.route)}</dd>
+    <dt>status</dt><dd>${esc(v.subtitle)}</dd>
+    <dt>position</dt><dd>${v.lat?.toFixed(5)}, ${v.lon?.toFixed(5)}</dd>
+    <dt>near stop</dt><dd>${esc(v.stop||"between stops")}</dd>
+    <dt>last seen</dt><dd>${hhmm(v.seen)}</dd>
+    <dt>source</dt><dd>${esc(v.source)}</dd></dl>
+    <div class="quote"><b>note</b>Positions come straight from the agency's
+    GTFS-Realtime feed. Dispatch does not smooth or interpolate them.</div>`);
+}
+function openLeg(id){
+  const leg = find("leg",id); if(!leg) return;
+  const full = (ST?.itinerary||[]).find(i=>i.item_id===id);
+  let h = `<dl class="kv">
+    <dt>service</dt><dd>${esc(leg.route||"—")}</dd>
+    <dt>departs</dt><dd>${leg.depart_at? hhmm(leg.depart_at):"no time read"}</dd>
+    ${leg.headway_min?`<dt>frequency</dt><dd>every ${leg.headway_min} min</dd>`:""}
+    <dt>read from</dt><dd>${esc(leg.document||"your documents")}</dd></dl>`;
+  const fp = full ? (full.field_provenance||{}) : {};
+  const prov = Object.entries(fp).filter(([,p])=>p);
+  if(prov.length){
+    h += `<h2>Every field, and where it came from</h2>`;
+    prov.forEach(([k,p],i)=>{ h += `<button class="src" data-prov="${i}">
+      <span class="loc">${esc(k)} · ${esc(p.source_id)} · ${esc(p.locator)}</span>
+      <div class="snip">${esc(p.snippet||"")}</div></button>`; });
+    h += `<div id="paper"></div>`;
+    window.__prov = prov.map(([,p])=>p);
+  }
+  openSheet(esc(nice(leg.title)), h);
+}
+function openDoc(id){
+  openSheet(esc(id), `<div id="paper"></div>`);
+  window.__prov = [{source_id:id, char_start:null, char_end:null}];
+  showPaper(0);
+}
+async function showPaper(i){
+  const p = (window.__prov||[])[i]; if(!p) return;
+  const box = $("#paper"); if(!box) return;
+  box.innerHTML = `<div class="empty" style="padding:18px">opening ${
+    esc(p.source_id)}…</div>`;
+  if(!p.source_id || p.source_type === "prt-bus" || p.source_type === "prt-rail"){
+    box.innerHTML = `<div class="quote"><b>telemetry</b>${
+      esc(p.snippet||"no excerpt")}</div>`;
     return;
   }
-  const t0 = Math.min(...pairs.map(f => f.signal.detected_at));
-  const t1 = Math.max(...pairs.map(f => f.signal.detected_at + f.lead_time_s));
-  const span = Math.max(1, t1 - t0);
-  const pct = t => 4 + 92 * (t - t0) / span;
-  let h = `<div class="lbl a">Dispatch</div><div class="lane a"></div>
-           <div class="lbl b">Agency</div><div class="lane b"></div>`;
-  pairs.forEach(f => {
-    const a = pct(f.signal.detected_at), b = pct(f.signal.detected_at + f.lead_time_s);
-    h += `<div class="gap" style="left:calc(96px + ${a}% * (100% - 104px) / 100);
-            width:calc(${(b-a)}% * (100% - 104px) / 100)"></div>`;
-    h += `<div class="pip us" style="left:calc(96px + ${a}% * (100% - 104px) / 100);top:30px"
-            title="Dispatch detected ${esc(f.signal.kind)} at ${clock(f.signal.detected_at)}"></div>`;
-    h += `<div class="pip them" style="left:calc(96px + ${b}% * (100% - 104px) / 100);top:76px"
-            title="Agency alert at ${clock(f.signal.detected_at + f.lead_time_s)}"></div>`;
-    h += `<div class="gaplbl" style="left:calc(96px + ${a}% * (100% - 104px) / 100)">
-            ${mins(f.lead_time_s)} min earlier</div>`;
-  });
-  el.innerHTML = h;
-}
-
-function drawFindings(findings){
-  const el = $("#findings");
-  $("#f-count").textContent = findings.length;
-  if(!findings.length){ el.innerHTML = `<div class="none">Nothing detected yet.</div>`; return; }
-  el.innerHTML = findings.slice().reverse().map(f => {
-    const s = f.signal, v = f.verdict, ev = s.evidence || {};
-    const evTxt = Object.entries(ev)
-      .filter(([,x]) => x !== null && x !== "" && typeof x !== "object")
-      .map(([k,x]) => `${k}=${x}`).join("  ");
-    return `<div class="finding">
-      <div class="aspect ${esc(v.act)}"></div>
-      <div class="fmain">
-        <div class="frow1">
-          <span class="kind">${esc(s.kind.replace(/_/g," ").toLowerCase())}</span>
-          <span class="route">${esc(s.route_id || s.source_type)}</span>
-          <span class="act ${esc(v.act)}">${esc(v.act)}</span>
-          <span class="why">${esc(v.reason_code)}</span>
-        </div>
-        ${f.item ? `<div class="why">affects ${esc(f.item.label)}</div>` : ""}
-        ${evTxt ? `<div class="ev">${esc(evTxt)}</div>` : ""}
-        ${f.lead_time_s != null
-          ? `<div class="lead">${mins(f.lead_time_s)} min before the agency said anything</div>`
-          : ""}
-      </div></div>`;
-  }).join("");
-}
-
-async function showCite(btn, docId, field, prov){
-  const holder = btn.closest(".leg").querySelector(".cite-slot");
-  const open = btn.getAttribute("aria-expanded") === "true";
-  btn.closest(".leg").querySelectorAll(".field")
-     .forEach(b => b.setAttribute("aria-expanded","false"));
-  if(open){ holder.innerHTML = ""; return; }
-  btn.setAttribute("aria-expanded","true");
-  if(!docCache[docId]){
-    try{
-      const r = await fetch("/api/document/"+encodeURIComponent(docId));
-      docCache[docId] = r.ok ? await r.json() : {text:""};
-    }catch(e){ docCache[docId] = {text:""}; }
-  }
-  const doc = docCache[docId];
-  let snip = prov.snippet || "";
-  if(doc.text && prov.char_start != null){
-    const lo = Math.max(0, prov.char_start - 90), hi = Math.min(doc.text.length, prov.char_end + 90);
-    snip = esc(doc.text.slice(lo, prov.char_start))
-         + "<mark>" + esc(doc.text.slice(prov.char_start, prov.char_end)) + "</mark>"
-         + esc(doc.text.slice(prov.char_end, hi));
-  } else { snip = esc(snip); }
-  holder.innerHTML = `<div class="cite">
-      <div class="loc">${esc(prov.source_id)} · ${esc(prov.locator)}
-        · chars ${prov.char_start ?? "?"}–${prov.char_end ?? "?"}</div>
-      <div class="snip">${snip}</div></div>`;
-}
-
-function drawItinerary(items){
-  const el = $("#itinerary");
-  if(!items.length){ el.innerHTML = `<div class="none">No itinerary loaded.</div>`; return; }
-  el.innerHTML = items.map((it,idx) => {
-    const fp = it.field_provenance || {};
-    const chips = Object.keys(fp).map(f =>
-      `<button class="field" aria-expanded="false" data-leg="${idx}" data-field="${esc(f)}">${esc(f)}</button>`
-    ).join("");
-    const when = it.depart_at ? clock(it.depart_at) : "time unknown";
-    const extra = [];
-    if(it.route_hint) extra.push(it.route_hint);
-    if(it.headway_min) extra.push("every "+it.headway_min+" min");
-    if(it.leg_role && it.leg_role !== "primary") extra.push(it.leg_role);
-    return `<div class="leg" data-idx="${idx}">
-      <h4>${esc(it.label || it.kind)}</h4>
-      <div class="meta">departs ${esc(when)}${extra.length ? " · "+esc(extra.join(" · ")) : ""}</div>
-      <div class="fields">${chips || '<span class="hint">no field citations</span>'}</div>
-      <div class="cite-slot"></div></div>`;
-  }).join("");
-  el.querySelectorAll(".field").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const it = items[+btn.dataset.leg];
-      const prov = (it.field_provenance || {})[btn.dataset.field];
-      if(prov) showCite(btn, prov.source_id, btn.dataset.field, prov);
-    });
-  });
-}
-
-function drawDrafts(drafts){
-  const el = $("#drafts");
-  if(!drafts.length){ el.innerHTML = `<div class="none">Nothing drafted.</div>`; return; }
-  el.innerHTML = drafts.map(d => `<div class="draft">
-      <div class="subj">${esc(d.subject)}</div>
-      <pre>${esc(d.body)}</pre>
-      <span class="pending">${esc(d.status)}</span>
-    </div>`).join("");
-}
-
-async function tick(){
   try{
-    const r = await fetch("/api/state"); const s = await r.json();
-    $("#c-backend").textContent = s.backend || "rules";
-    $("#c-signals").textContent = s.stats.signals ?? 0;
-    $("#c-surfaced").textContent = s.stats.surfaced ?? 0;
-    $("#c-suppressed").textContent = s.stats.suppressed ?? 0;
-    $("#c-status").textContent = s.status === "running"
-      ? `replaying ${s.progress.done}/${s.progress.total}` : s.status;
-    drawTimeline(s.findings || [], s.alerts || []);
-    drawFindings(s.findings || []);
-    drawItinerary(s.itinerary || []);
-    drawDrafts(s.drafts || []);
-  }catch(e){ $("#c-status").textContent = "server unreachable"; }
+    if(!DOCS[p.source_id])
+      DOCS[p.source_id] = await (await fetch(
+        "/api/document/"+encodeURIComponent(p.source_id))).json();
+    const d = DOCS[p.source_id], t = d.text||"";
+    let inner;
+    if(p.char_start==null){ inner = esc(t); }
+    else{
+      const a=Math.max(0,p.char_start), b=Math.min(t.length,p.char_end);
+      inner = esc(t.slice(0,a))+"<mark>"+esc(t.slice(a,b))+"</mark>"+esc(t.slice(b));
+    }
+    box.innerHTML = `<div style="margin:12px 0 0;color:var(--faint);font-size:12px">
+      ${esc(d.source_id)}${p.char_start!=null?` · characters ${p.char_start}–${p.char_end}`:""}
+      </div><div class="paper">${inner}</div>`;
+    const paper = box.querySelector(".paper"), mk = box.querySelector("mark");
+    if(paper&&mk) paper.scrollTop = Math.max(0, mk.offsetTop - paper.clientHeight/2);
+  }catch(e){ box.innerHTML = `<div class="empty">Could not open that source.</div>`; }
 }
 
-loadScenarios();
-tick();
-setInterval(tick, 900);
+/* --- render + events ------------------------------------------------------ */
+async function render(){
+  const m = $("#main");
+  m.innerHTML = VIEW==="now" ? viewNow()
+    : VIEW==="search" ? viewSearch()
+    : VIEW==="map" ? viewMap()
+    : VIEW==="trips" ? viewTrips()
+    : `<div class="empty">loading…</div>`;
+  if(VIEW==="evidence") m.innerHTML = await viewEvidence();
+  $$(".nav").forEach(b => b.setAttribute("aria-current",
+    b.dataset.v===VIEW ? "page" : "false"));
+  $("#n-now").textContent = (ST?.findings||[]).length || "";
+  $("#n-trips").textContent = (CAT?.legs||[]).length || "";
+  $("#n-map").textContent = (CAT?.vehicles||[]).length || "";
+  if(VIEW==="trips") wireUpload();
+  if(VIEW==="search"){
+    const inp = $("#q");
+    inp.focus(); inp.setSelectionRange(Q.length, Q.length);
+    inp.oninput = e => { Q = e.target.value; SEL = 0; render(); };
+  }
+}
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-v],[data-open],[data-mode],[data-prov],[data-follow],[data-run]");
+  if(!t) return;
+  if(t.dataset.v){ VIEW = t.dataset.v; Q = ""; closeSheet(); return render(); }
+  if(t.dataset.mode){ MODE = t.dataset.mode; SEL = 0; return render(); }
+  if(t.dataset.open) return open(t.dataset.open);
+  if(t.dataset.prov != null) return showPaper(+t.dataset.prov);
+  if(t.dataset.follow){
+    const k = t.dataset.follow;
+    FOLLOW.has(k) ? FOLLOW.delete(k) : FOLLOW.add(k);
+    saveFollow(); open(k); return render();
+  }
+  if(t.dataset.run !== undefined) return run();
+});
+$("#scrim").onclick = closeSheet; $("#sheetx").onclick = closeSheet;
+document.addEventListener("keydown", e => {
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k"){
+    e.preventDefault(); VIEW = "search"; return render(); }
+  if(e.key === "Escape"){
+    if($("#sheet").classList.contains("on")) return closeSheet();
+    if(VIEW==="search" && Q){ Q=""; return render(); }
+  }
+  if(VIEW==="search" && ["ArrowDown","ArrowUp","Enter"].includes(e.key)){
+    const hits = $$(".hit"); if(!hits.length) return;
+    if(e.key==="Enter"){ hits[Math.min(SEL,hits.length-1)]?.click(); return; }
+    e.preventDefault();
+    SEL = Math.max(0, Math.min(hits.length-1, SEL + (e.key==="ArrowDown"?1:-1)));
+    hits.forEach((h,i)=>h.setAttribute("aria-selected", i===SEL));
+    hits[SEL].scrollIntoView({block:"nearest"});
+  }
+});
+
+/* --- upload --------------------------------------------------------------- */
+function wireUpload(){
+  const zone=$("#drop"), input=$("#file"), pick=$("#pick"), out=$("#upres");
+  if(!zone) return;
+  pick.onclick = () => input.click();
+  input.onchange = () => input.files[0] && send(input.files[0]);
+  ["dragenter","dragover"].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.remove("over"); }));
+  zone.addEventListener("drop", e => {
+    const f = e.dataTransfer?.files?.[0]; if(f) send(f); });
+
+  async function send(file){
+    UPLOAD = {busy:file.name}; render();
+    // Always base64 so binary formats (PDF) survive the trip intact.
+    const b64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload = () => res(String(r.result).split(",")[1]);
+      r.onerror = () => rej(new Error("read failed"));
+      r.readAsDataURL(file);
+    }).catch(()=>null);
+    if(!b64){ UPLOAD={error:"Could not read that file."}; return render(); }
+    let r;
+    try{
+      r = await (await fetch("/api/upload",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name:file.name, b64})})).json();
+    }catch(e){ r = {error:"upload failed"}; }
+    if(r.error){ UPLOAD={error:r.error}; return render(); }
+    UPLOAD = r;
+    await tick();
+    render();
+  }
+}
+
+/* --- data ----------------------------------------------------------------- */
+async function tick(){
+  try{ ST = await (await fetch("/api/state")).json(); }catch(e){ return; }
+  try{ CAT = await (await fetch("/api/catalog")).json(); _rkeys = []; }catch(e){}
+  $("#f-backend").textContent = ST.backend||"—";
+  $("#f-clock").textContent = ST.clock? hhmm(ST.clock) : "idle";
+  if(!$("#sheet").classList.contains("on") || VIEW!=="search") render();
+  if(ST.status!=="running" && POLL){ clearInterval(POLL); POLL=null; }
+}
+async function run(){
+  const worlds = await (await fetch("/api/scenarios")).json();
+  if(!worlds.length) return;
+  await fetch("/api/replay",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({scenario:worlds[0].name, speed:900})});
+  if(!POLL) POLL = setInterval(tick, 500);
+  tick();
+}
+window.addEventListener("hashchange", () => {
+  const t = location.hash.slice(1);
+  if(t) open(t); else closeSheet();
+});
+
+(async function(){
+  await tick();
+  if(!(ST?.findings||[]).length) await run();
+  // Honour a deep link once data has arrived.
+  const t = location.hash.slice(1);
+  if(t) setTimeout(() => open(t), 400);
+})();
 </script>
 </body>
 </html>

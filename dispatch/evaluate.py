@@ -286,7 +286,24 @@ def run_arm(
     if paths:
         pipe.load_documents(load_documents(paths))
 
-    for snap in load_snapshots(root):
+    snapshots = load_snapshots(root)
+
+    # Refuse to score a world whose snapshots do not belong to its ground
+    # truth. Stale files from an earlier generation used to silently halve
+    # recall; an explicit failure is worth more than a plausible number.
+    span_start = truth["start"]
+    span_end = truth["start"] + truth["ticks"] * truth["tick_seconds"]
+    strays = [s.epoch for s in snapshots
+              if not (span_start - 60 <= s.epoch <= span_end + 60)]
+    if strays:
+        raise RuntimeError(
+            f"{len(strays)} snapshots in {root} fall outside the window "
+            f"described by truth.json ({span_start}..{span_end}); earliest "
+            f"stray {min(strays)}. This is stale data from an earlier "
+            f"`fixtures` run. Regenerate: python3 -m dispatch.cli fixtures"
+        )
+
+    for snap in snapshots:
         pipe.observe(snap.observations, snap.alerts, snap.epoch)
     pipe.reconcile_alerts()
 

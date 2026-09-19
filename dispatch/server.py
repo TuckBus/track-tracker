@@ -166,6 +166,99 @@ class Session:
         threading.Thread(target=worker, daemon=True).start()
 
 
+def catalog() -> dict:
+    """Everything searchable, in one payload.
+
+    Sent whole rather than queried per keystroke: the dataset is small (tens
+    of vehicles, a handful of legs and documents) and filtering in the browser
+    is instant, which is the difference between search that feels native and
+    search that feels like a web form. Every entry carries `source` so the UI
+    can be honest about where it knows this from -- live telemetry, or a
+    document you gave it.
+    """
+    from .simulate import build_routes
+
+    with SESSION.lock:
+        pipe = SESSION.pipeline
+        docs = list(SESSION.documents.values())
+
+    findings = pipe.findings if pipe else []
+    legs = pipe.itinerary if pipe else []
+
+    # live vehicles, from detector state
+    vehicles: list[dict] = []
+    if pipe:
+        for key, st in pipe.detector.states.items():
+            obs = st.last_obs
+            if obs is None or key.startswith("cascade:"):
+                continue
+            vehicles.append({
+                "kind": "vehicle", "id": obs.vehicle_id, "title": obs.vehicle_id,
+                "subtitle": f"{obs.route_id} · {obs.status or 'in service'}",
+                "route": obs.route_id, "mode": "bus",
+                "lat": obs.lat, "lon": obs.lon, "stop": obs.stop_id,
+                "seen": st.last_seen_at, "source": "live feed",
+            })
+
+    # routes, with how many vehicles and events each has right now
+    per_route: dict[str, int] = {}
+    for v in vehicles:
+        per_route[v["route"]] = per_route.get(v["route"], 0) + 1
+    events_by_route: dict[str, int] = {}
+    for f in findings:
+        events_by_route[f.signal.route_id] = (
+            events_by_route.get(f.signal.route_id, 0) + 1)
+
+    routes = []
+    for r in build_routes():
+        routes.append({
+            "kind": "route", "id": r.route_id, "title": r.route_id,
+            "subtitle": f"{r.stops[0][0]} to {r.stops[-1][0]}",
+            "mode": "bus", "headway_min": r.headway_min,
+            "vehicles": per_route.get(r.route_id, 0),
+            "events": events_by_route.get(r.route_id, 0),
+            "stops": [s[0] for s in r.stops],
+            # Geometry for the map. Sent as coordinates rather than rendered
+            # tiles: no API key, no tile server, and it still draws when the
+            # venue wifi is gone.
+            "coords": [[s[1], s[2]] for s in r.stops],
+            "source": "live feed",
+        })
+
+    # itinerary legs: these are where trains and flights come from
+    mode_of = {"transit": "bus", "rail": "train", "flight": "flight",
+               "appointment": "event"}
+    leg_rows = []
+    for leg in legs:
+        prov = leg.provenance[0].source_id if leg.provenance else ""
+        leg_rows.append({
+            "kind": "leg", "id": leg.item_id, "title": leg.label,
+            "subtitle": (f"{leg.route_hint} · " if leg.route_hint else "")
+                        + (prov or "your documents"),
+            "mode": mode_of.get(leg.kind, "event"), "route": leg.route_hint,
+            "depart_at": leg.depart_at, "headway_min": leg.headway_min,
+            "document": prov, "source": "your documents",
+        })
+
+    doc_rows = [{
+        "kind": "document", "id": d.source_id, "title": d.source_id,
+        "subtitle": f"{d.source_type} · {len(d.text)} characters",
+        "mode": "document", "source": "your documents",
+    } for d in docs]
+
+    event_rows = [{
+        "kind": "event", "id": f.signal.signal_id,
+        "title": f"{f.signal.kind} on {f.signal.route_id}",
+        "subtitle": f"{f.verdict.act} · {f.verdict.reason_code}",
+        "mode": "bus", "route": f.signal.route_id,
+        "act": f.verdict.act, "at": f.signal.detected_at,
+        "source": "live feed",
+    } for f in findings]
+
+    return {"routes": routes, "vehicles": vehicles, "legs": leg_rows,
+            "documents": doc_rows, "events": event_rows}
+
+
 def list_worlds() -> list[dict]:
     """Anything on disk with a prt-bus lane is replayable."""
     roots = ["fixtures", "recordings", "."]
@@ -247,6 +340,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/scenarios":
             self._json(list_worlds())
             return
+        if path == "/api/eval":
+            # Serve the last scored run. The evidence belongs in the product,
+            # not only in a markdown file nobody opens during a demo.
+            try:
+                with open("EVAL.json") as fh:
+                    self._json({"arms": json.load(fh)})
+            except (OSError, ValueError):
+                self._json({"arms": [], "note": "run: dispatch eval"})
+            return
+        if path == "/api/catalog":
+            self._json(catalog())
+            return
+        if path == "/api/truth":
+            from .replay import load_truth
+            self._json(load_truth(DEFAULT_WORLD) or {})
+            return
         if path.startswith("/api/document/"):
             doc_id = path[len("/api/document/") :]
             with SESSION.lock:
@@ -274,6 +383,56 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             body = parse_qs(raw.decode(errors="replace"))
             body = {k: v[0] for k, v in body.items()}
+        if path == "/api/upload":
+            # Drop a real confirmation email, ticket or boarding pass in and
+            # watch the adapter layer handle it. This is the Xtract claim made
+            # testable by whoever is holding the laptop.
+            import base64
+            from .sources.base import document_source_for
+
+            name = str(body.get("name") or "upload.txt")
+            blob = b""
+            if body.get("b64"):
+                try:
+                    blob = base64.b64decode(body["b64"])
+                except Exception:
+                    self._json({"error": "could not decode that file"}, 400)
+                    return
+            elif body.get("text"):
+                blob = str(body["text"]).encode("utf-8")
+            if not blob:
+                self._json({"error": "empty file"}, 400)
+                return
+            if len(blob) > 2_000_000:
+                self._json({"error": "file too large (2MB limit)"}, 400)
+                return
+
+            src = document_source_for(name)
+            if src is None:
+                self._json({"error": "no adapter for that file type"}, 400)
+                return
+            doc = src.parse(blob, name, int(time.time()))
+
+            with SESSION.lock:
+                pipe = SESSION.pipeline
+                if pipe is None:
+                    self._json({"error": "start a replay first"}, 409)
+                    return
+                legs = pipe.backend.extract(doc)
+                known = {i.item_id for i in pipe.itinerary}
+                added = [l for l in legs if l.item_id not in known]
+                pipe.itinerary = sorted(
+                    pipe.itinerary + added,
+                    key=lambda i: (i.depart_at or 1 << 62))
+                SESSION.documents[doc.source_id] = doc
+            self._json({
+                "document": {"source_id": doc.source_id,
+                             "source_type": doc.source_type,
+                             "chars": len(doc.text)},
+                "legs": [l.to_dict() for l in added],
+                "found": len(legs), "added": len(added),
+            })
+            return
         if path == "/api/replay":
             name = body.get("scenario") or DEFAULT_WORLD
             speed = float(body.get("speed") or 60)

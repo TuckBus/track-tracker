@@ -46,7 +46,11 @@ from .schema import (
 NVIDIA_URL = os.environ.get(
     "DISPATCH_NVIDIA_URL", "https://integrate.api.nvidia.com/v1/chat/completions"
 )
-NVIDIA_MODEL = os.environ.get("DISPATCH_NVIDIA_MODEL", "nvidia/nemotron-3-nano-30b-a3b")
+# nvidia/nemotron-3-nano-30b-a3b reached end of life 2026-09-01 and now
+# returns HTTP 410. Verified working replacement, same 30B/3B-active shape:
+NVIDIA_MODEL = os.environ.get(
+    "DISPATCH_NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b"
+)
 
 TRIAGE_SYSTEM = """You are the triage stage of an automated transit disruption pipeline.
 You are not a chat assistant. You do not address the user. You emit one JSON object.
@@ -207,6 +211,18 @@ class RulesBackend:
             rationale="threshold baseline",
             backend=self.name,
             latency_ms=int((time.perf_counter() - t0) * 1000),
+            # The baseline gets an audit trail too, so the two arms are
+            # compared on the same terms: here are the inputs, here is the
+            # rule that fired.
+            request_json=json.dumps({
+                "signal": {"kind": signal.kind, "route_id": signal.route_id,
+                           "evidence": ev},
+                "matched_item_id": item.item_id if item else None,
+                "slack_minutes": slack,
+                "headway_min": item.headway_min if item else None,
+            }, indent=2),
+            response_raw=json.dumps({"act": act, "reason_code": code,
+                                     "rule": "thresholds in RulesBackend.triage"}),
         )
         return clamp_verdict(v, item, now, ev)
 
@@ -303,7 +319,7 @@ class NemotronBackend:
         """
         return bool(self.api_key)
 
-    def _chat(self, system: str, user: str, max_tokens: int = 700) -> str:
+    def _chat(self, system: str, user: str, max_tokens: int = 2048) -> str:
         body = json.dumps(
             {
                 "model": self.model,
@@ -328,7 +344,21 @@ class NemotronBackend:
         self.calls += 1
         with urllib.request.urlopen(req, timeout=45) as resp:
             payload = json.loads(resp.read().decode())
-        return payload["choices"][0]["message"]["content"]
+        choice = payload["choices"][0]
+        message = choice.get("message", {})
+        content = (message.get("content") or "").strip()
+        # Reasoning models sometimes put everything in reasoning_content and
+        # leave content empty, especially when the reply was cut short.
+        if not content:
+            content = (message.get("reasoning_content") or "").strip()
+        if choice.get("finish_reason") == "length" and not content.rstrip().endswith("}"):
+            # Truncated mid-answer. Say so rather than handing the parser a
+            # half-written object and reporting whatever it salvages.
+            raise ValueError(
+                "model response truncated (finish_reason=length); "
+                "raise max_tokens"
+            )
+        return content
 
     # -- Job A ---------------------------------------------------------
     def triage(self, signal: Signal, items: list[ItineraryItem], now: int) -> Verdict:
@@ -360,7 +390,12 @@ class NemotronBackend:
             "slack_minutes": slack_minutes(item, now),
         }
         try:
-            raw = self._chat(TRIAGE_SYSTEM, json.dumps(payload), max_tokens=300)
+            # Sized for a reasoning model: Nemotron 3.5 Lightning spends
+            # several hundred tokens thinking before it emits the verdict, and
+            # 300 truncated it every time -- which showed up as a silent
+            # fallback to the rules arm, not as an error.
+            request_json = json.dumps(payload, indent=2)
+            raw = self._chat(TRIAGE_SYSTEM, request_json, max_tokens=2048)
             data = _loose_json(raw)
             v = Verdict(
                 act=str(data.get("act", "LOG")).upper(),  # type: ignore[arg-type]
@@ -371,6 +406,8 @@ class NemotronBackend:
                 rationale=str(data.get("rationale", ""))[:160],
                 backend=self.name,
                 latency_ms=int((time.perf_counter() - t0) * 1000),
+                request_json=request_json,
+                response_raw=raw[:4000],
             )
             if v.act not in ACT_ORDER:
                 v.act = "LOG"  # type: ignore[assignment]
@@ -390,7 +427,7 @@ class NemotronBackend:
             raw = self._chat(
                 EXTRACT_SYSTEM,
                 json.dumps({"source_type": doc.source_type, "text": window}),
-                max_tokens=900,
+                max_tokens=3000,
             )
             data = _loose_json(raw)
         except (urllib.error.URLError, KeyError, ValueError, TimeoutError, OSError):
@@ -434,14 +471,35 @@ class NemotronBackend:
 # --------------------------------------------------------------------------
 
 
+# Keys that mark an object as an actual answer rather than a fragment the
+# model wrote while thinking out loud.
+_ANSWER_KEYS = ("act", "legs")
+
+
 def _loose_json(raw: str) -> dict:
-    """Models wrap JSON in fences and prose no matter how firmly you ask."""
-    txt = raw.strip()
+    """Pull the answer object out of whatever the model actually sent.
+
+    Three things this has to survive, all of which happen in practice:
+
+    - markdown fences and chatty preamble;
+    - reasoning models that narrate first. Nemotron 3.5 Lightning emits a
+      "Here's a thinking process:" block before answering, and that block
+      often contains draft JSON. Taking the *first* balanced object returns
+      the model's rough work instead of its conclusion, so scan back to
+      front and prefer an object carrying an answer key;
+    - <think> blocks, which some templates emit inline.
+    """
+    txt = (raw or "").strip()
+    txt = re.sub(r"<think>.*?</think>", "", txt, flags=re.S | re.I).strip()
     txt = re.sub(r"^```(?:json)?|```$", "", txt, flags=re.M).strip()
+
     try:
         return json.loads(txt)
     except json.JSONDecodeError:
         pass
+
+    # Collect every balanced {...} span.
+    found: list[dict] = []
     depth, start = 0, -1
     for i, ch in enumerate(txt):
         if ch == "{":
@@ -452,9 +510,18 @@ def _loose_json(raw: str) -> dict:
             depth -= 1
             if depth == 0 and start >= 0:
                 try:
-                    return json.loads(txt[start : i + 1])
+                    found.append(json.loads(txt[start : i + 1]))
                 except json.JSONDecodeError:
-                    continue
+                    pass
+                start = -1
+
+    # Last answer-shaped object wins; otherwise last parseable object.
+    for obj in reversed(found):
+        if isinstance(obj, dict) and any(k in obj for k in _ANSWER_KEYS):
+            return obj
+    for obj in reversed(found):
+        if isinstance(obj, dict):
+            return obj
     raise ValueError("no JSON object in model output")
 
 

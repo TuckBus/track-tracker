@@ -1,6 +1,6 @@
 # Evaluation
 
-Generated 2026-09-19 13:43:56 from `fixtures/world`.
+Generated 2026-09-19 17:35:31 from `fixtures/world`.
 
 ## What was measured
 
@@ -10,18 +10,14 @@ A positive prediction is `act in {NOTIFY, INTERVENE}` -- the two branches that s
 
 | arm                        | TP | FP | FN | TN | prec | recall |  F1  | alerts/h | median lead |
 |----------------------------|----|----|----|----|------|--------|------|----------|-------------|
-| detector                   |  4 |  8 |  0 |  8 | 0.33 | 1.00   | 0.50 |     4.00 |     6.7 min |
-| rules                      |  4 |  3 |  0 | 13 | 0.57 | 1.00   | 0.73 |     2.33 |     6.7 min |
-| nemotron                   |  4 |  3 |  0 | 13 | 0.57 | 1.00   | 0.73 |     2.33 |     6.7 min |
-| rules (no layover join)    |  4 |  7 |  0 | 11 | 0.36 | 1.00   | 0.53 |     3.67 |     6.7 min |
+| detector                   |  4 |  6 |  0 |  8 | 0.40 | 1.00   | 0.57 |     3.33 |     6.7 min |
+| rules                      |  4 |  1 |  0 | 13 | 0.80 | 1.00   | 0.89 |     1.67 |     6.7 min |
 
 
 ## Where the errors are
 
-- **detector**: false positives FEED_ARTIFACTx1, STALL_DISABLEDx1, TIMEPOINT_HOLDx3, VANISHED_REALx1; 2 unattributable
-- **rules**: false positives TIMEPOINT_HOLDx1; 2 unattributable
-- **nemotron**: false positives TIMEPOINT_HOLDx1; 2 unattributable; **12/12 verdicts came from the fallback, not the model** -- treat this row as degraded
-- **rules (no layover join)**: false positives GARAGE_PULLINx1, TERMINAL_LAYOVERx1, TIMEPOINT_HOLDx1; 4 unattributable
+- **detector**: false positives FEED_ARTIFACTx1, STALL_DISABLEDx1, TIMEPOINT_HOLDx3, VANISHED_REALx1
+- **rules**: false positives TIMEPOINT_HOLDx1
 
 ## Honest limits of this number
 

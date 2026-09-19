@@ -233,6 +233,11 @@ class Verdict:
     rationale: str = ""
     backend: str = ""
     latency_ms: int = 0
+    # The audit trail. Exactly what the triage stage was shown and exactly
+    # what it sent back, kept so a reviewer can check the decision rather
+    # than take our word for it. Empty for arms that make no call.
+    request_json: str = ""
+    response_raw: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

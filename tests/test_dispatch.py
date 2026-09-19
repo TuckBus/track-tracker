@@ -156,6 +156,36 @@ class TestPortability(unittest.TestCase):
             builtins.__import__ = real_import
             timeutil._cache.clear()
 
+    def test_clock_formatting_uses_no_platform_specific_codes(self):
+        """REGRESSION.
+
+        pipeline.py formatted draft times with "%-I:%M %p". The dash modifier
+        is a GNU extension: it strips the leading zero on Linux and raises
+        ValueError on Windows, so every INTERVENE draft crashed the pipeline
+        on a Windows laptop while passing CI on Linux.
+        """
+        from dispatch.timeutil import fmt_clock, fmt_day
+
+        # 2026-09-19 16:25 Eastern
+        epoch = 1758313500
+        out = fmt_clock(epoch)
+        self.assertRegex(out, r"^\d{1,2}:\d{2} (AM|PM)$")
+        self.assertFalse(out.startswith("0"), f"leading zero not stripped: {out}")
+        self.assertEqual(fmt_clock(None), "")
+        self.assertRegex(fmt_day(epoch), r"^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{2}$")
+
+    def test_no_gnu_only_strftime_codes_anywhere(self):
+        """Guard the whole package, not just the one line that broke."""
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parent.parent / "dispatch"
+        offenders = []
+        for path in root.rglob("*.py"):
+            for i, line in enumerate(path.read_text().splitlines(), 1):
+                if "strftime" in line and ("%-" in line or "%#" in line):
+                    offenders.append(f"{path.name}:{i}")
+        self.assertEqual(offenders, [], f"non-portable strftime in {offenders}")
+
     def test_document_times_are_not_read_as_utc(self):
         """The old fallback read local departure times as UTC: a 4 hour error
         that did not raise and silently corrupted every slack calculation."""
@@ -390,6 +420,28 @@ class TestTriageInvariants(unittest.TestCase):
         self.assertEqual(data["act"], "NOTIFY")
         self.assertEqual(data["severity"], 2)
 
+    def test_reasoning_preamble_does_not_hijack_the_verdict(self):
+        """REGRESSION.
+
+        Nemotron 3.5 Lightning narrates before answering, and the narration
+        contains draft JSON. Taking the first balanced object returned the
+        model's rough work instead of its conclusion. Scan back to front and
+        prefer an object carrying an answer key.
+        """
+        raw = (
+            "Here's a thinking process:\n"
+            "1. Looks like a stall. Maybe {\"act\": \"LOG\"}?\n"
+            "2. No, slack is 4 minutes.\n"
+            "Final answer:\n"
+            '{"act":"INTERVENE","severity":3,"reason_code":"SLACK_EXHAUSTED",'
+            '"confidence":0.8}'
+        )
+        self.assertEqual(_loose_json(raw)["act"], "INTERVENE")
+
+    def test_think_blocks_are_stripped(self):
+        out = _loose_json('<think>{"act":"LOG"}</think>{"act":"NOTIFY"}')
+        self.assertEqual(out["act"], "NOTIFY")
+
     def test_loose_json_raises_on_genuine_garbage(self):
         with self.assertRaises(Exception):
             _loose_json("I'm afraid I can't help with that.")
@@ -541,6 +593,43 @@ class TestSimulatorLabels(unittest.TestCase):
         world = World(start_epoch=FIXED_NOW, hours=3.0, seed=7)
         positives = sum(1 for s in world.scenarios if s.should_notify)
         self.assertLess(positives, len(world.scenarios) / 2)
+
+    def test_regenerating_clears_the_previous_generation(self):
+        """REGRESSION.
+
+        Snapshots are named by feed timestamp, so regenerating with a
+        different --start left the old files behind and replay read both
+        timelines interleaved. Vehicles teleported between generations, the
+        stall anchor reset on every jump, and recall silently fell from 1.00
+        to 0.50 with no error raised.
+        """
+        tmp = tempfile.mkdtemp()
+        world = os.path.join(tmp, "w")
+        World(start_epoch=FIXED_NOW, hours=0.3, seed=7).write(world)
+        first = set(os.listdir(os.path.join(world, "prt-bus")))
+
+        World(start_epoch=FIXED_NOW + 500_000, hours=0.3, seed=7).write(world)
+        second = set(os.listdir(os.path.join(world, "prt-bus")))
+
+        self.assertFalse(first & second, "stale snapshots survived regeneration")
+
+    def test_eval_refuses_a_world_with_stale_snapshots(self):
+        from dispatch import evaluate
+
+        tmp = tempfile.mkdtemp()
+        world = os.path.join(tmp, "w")
+        World(start_epoch=FIXED_NOW, hours=0.3, seed=7).write(world)
+        # Plant a snapshot from a different era, as a second `fixtures` run did.
+        lane = os.path.join(world, "prt-bus")
+        stray = sorted(os.listdir(lane))[0]
+        with open(os.path.join(lane, stray), "rb") as fh:
+            blob = fh.read()
+        with open(os.path.join(lane, f"{FIXED_NOW + 900_000}.pb"), "wb") as fh:
+            fh.write(blob)
+
+        with self.assertRaises(RuntimeError) as ctx:
+            evaluate.run_arm(world, "rules")
+        self.assertIn("stale", str(ctx.exception).lower())
 
     def test_fixtures_parse_through_the_live_adapter(self):
         world = World(start_epoch=FIXED_NOW, hours=0.2, seed=7)

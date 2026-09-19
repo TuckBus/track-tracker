@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 from .detect import Detector
 from .llm import Backend, best_match, get_backend
+from .timeutil import fmt_clock
 from .schema import (
     Document,
     Finding,
@@ -219,7 +220,7 @@ class Pipeline:
         item = f.item
         label = item.label if item else f.signal.route_id
         when = (
-            time.strftime("%I:%M %p", time.localtime(item.depart_at)).lstrip("0")
+            fmt_clock(item.depart_at)
             if item and item.depart_at
             else "your next leg"
         )
@@ -242,4 +243,3 @@ class Pipeline:
         self.drafts.append(draft)
         if self.store:
             self.store.save_action(f.signal.signal_id, "email", subject, body)
-

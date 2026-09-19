@@ -8,6 +8,7 @@
     python3 -m dispatch.cli record --out DIR   poll the live feeds
     python3 -m dispatch.cli doctor             feeds and model endpoint reachable
     python3 -m dispatch.cli serve              the dashboard
+    python3 -m dispatch.cli demo               all of the above, one command
 """
 
 from __future__ import annotations
@@ -163,6 +164,23 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Everything needed for a cold-start demo, in one command."""
+    print("1/3  generating a labelled world")
+    cmd_fixtures(argparse.Namespace(
+        world=args.world, docs=DEFAULT_DOCS, hours=3.0, seed=7,
+        start=1758300000,
+    ))
+    print("\n2/3  scoring the triage arms")
+    cmd_eval(argparse.Namespace(
+        world=args.world, arms=None, no_ablation=False, out="EVAL.md",
+    ))
+    print("\n3/3  starting the dashboard")
+    return cmd_serve(argparse.Namespace(
+        world=args.world, port=args.port, db=None, no_open=args.no_open,
+    ))
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
@@ -217,6 +235,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor", help="check feeds and model endpoint")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser(
+        "demo", help="fixtures + eval + dashboard, one command")
+    p.add_argument("--world", default=DEFAULT_WORLD)
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--no-open", action="store_true")
+    p.set_defaults(func=cmd_demo)
 
     p = sub.add_parser("serve", help="run the dashboard")
     p.add_argument("--world", default=DEFAULT_WORLD)

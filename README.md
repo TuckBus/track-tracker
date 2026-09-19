@@ -32,12 +32,55 @@ GTFS-Realtime protobuf reader. Works on Windows without `tzdata`; run
 `python3 -m dispatch.cli doctor` to see which timezone it resolved.
 
 ```bash
+python3 -m dispatch.cli demo         # everything: world, eval, dashboard
+```
+
+That one command builds a labelled world, scores the triage arms, and opens the
+dashboard on `http://localhost:8000`. The individual steps, if you want them:
+
+```bash
 python3 -m dispatch.cli fixtures     # build a labelled 3-hour world
-python3 -m dispatch.cli replay       # run it through the pipeline
+python3 -m dispatch.cli replay       # run it through the pipeline, as text
 python3 -m dispatch.cli eval         # score the triage decision
 python3 -m dispatch.cli serve        # the dashboard, on :8000
+python3 -m dispatch.cli doctor       # are the live feeds and model reachable
 python3 -m unittest discover -s tests
 ```
+
+The app has four screens. **Now** opens with a plain answer -- "you're clear",
+"tight, but you can still make it", "you're going to miss Route 61C" -- above
+the activity feed. **Search** covers routes, vehicles, your trips, documents and
+events, with mode filters and `Cmd/Ctrl-K` to jump straight to it; buses and
+light rail come from live telemetry, trains and flights from your documents, and
+every result says which. **Trips** lists each leg with the drafted messages that
+are held for approval. **Evidence** carries the arms table and what the four
+decisions mean.
+
+**Map** draws every tracked route and live vehicle position, with a pulse on
+routes carrying an active disruption. It renders from coordinates rather than
+map tiles, so there is no API key, no tile server and no attribution burden, and
+it still draws when the venue wifi is gone.
+
+Open any leg or event and every field shows the document and paragraph it was
+read from; click one and the source opens with the supporting characters
+highlighted. Three more things are worth knowing:
+
+- **Drop in your own document.** Trips has a dropzone. Hand it a real
+  confirmation email, ticket or boarding pass and it runs through the same
+  adapters as everything else, with the extracted legs and their provenance
+  appearing immediately. This is the Xtract claim made testable by whoever is
+  holding the laptop rather than demonstrated on fixtures.
+- **Every decision has an audit trail.** Each event sheet can expand to show
+  the exact JSON the triage stage was shown and exactly what it returned,
+  for the rules baseline as well as for Nemotron, so the two arms are
+  inspectable on the same terms.
+- **Suppressed events explain themselves.** Anything Dispatch chose not to
+  surface says what would have had to be different. Suppression is the hard
+  half of this product, so it should be legible rather than silent.
+
+Routes can be followed, which pins them to Now. Events and trips have deep
+links, so a URL opens straight to one. Works down to phone width, follows the
+system light/dark setting, and is keyboard navigable.
 
 `fixtures` writes real GTFS-Realtime protobuf, byte-compatible with
 `truetime.portauthority.org`, and a `truth.json` the pipeline never reads.
@@ -55,6 +98,8 @@ To use the model rather than the rules baseline:
 ```bash
 export NVIDIA_API_KEY=nvapi-...
 export DISPATCH_BACKEND=nemotron
+# default model is nvidia/nemotron-3.5-lightning-30b-a3b; override with
+# DISPATCH_NVIDIA_MODEL if the catalog has moved on again
 python3 -m dispatch.cli eval --out EVAL.md
 ```
 
@@ -180,6 +225,33 @@ shifted every departure by four hours, which corrupts `slack_minutes` and
 therefore every triage decision downstream. `dispatch/timeutil.py` now degrades
 to the machine's own local zone, and `dispatch doctor` prints which zone is
 actually in use. The project stays dependency-free.
+
+**Stale fixtures, silently halving recall.** Snapshots are named by feed
+timestamp, so regenerating the world with a different `--start` left the old
+files on disk and replay read both timelines interleaved. Vehicles teleported
+between generations, the stall anchor reset on every jump, and recall dropped
+from 1.00 to 0.50 with no error anywhere — the kind of number you would put on
+a slide without blinking. The generator now clears its output, and `eval`
+refuses to score a world whose snapshots fall outside the window its own
+`truth.json` describes.
+
+**A model that reached end of life mid-build.** The pinned model id started
+returning HTTP 410 (`end of life on 2026-09-01`). Because `NemotronBackend`
+degrades to the rules arm on transport failure, the `nemotron` row filled in
+with plausible numbers that the model never produced. The fallback counter in
+`EVAL.md` is what caught it, which is the entire reason it exists. A reasoning
+model also needs room to think: `max_tokens=300` truncated every verdict, and
+`_loose_json` had to learn to prefer the *last* JSON object in a reply rather
+than the first, because the thinking preamble contains draft JSON.
+
+**A crash that only happened on Windows.** Draft times were formatted with
+`%-I:%M %p`. The dash modifier is a GNU extension: it works on Linux and raises
+`ValueError` on Windows, so every `INTERVENE` draft crashed the pipeline on a
+teammate's laptop while passing on ours. `timeutil.fmt_clock` formats portably
+and goes through the resolved timezone, so a drafted email can no longer show a
+different time than the slack calculation that triggered it. A test now scans
+the whole package for GNU-only strftime codes rather than guarding the one line
+that broke.
 
 **A feature that measured the wrong thing.** `drift_m` is distance from an
 anchor set *before* the vehicle stopped, so a bus decelerating into a stop
@@ -316,8 +388,8 @@ dispatch/
 tools/
   mock_prt.py       serves a world as PRT, to test the recorder offline
   mock_nemotron.py  OpenAI-compatible mock, to test the model client offline
-  timeutil.py      timezone resolution without a tzdata dependency
-tests/              44 tests, 5 of them regressions for bugs listed above
+  timeutil.py      portable timezone and clock formatting
+tests/              50 tests, 11 of them regressions for bugs listed above
 ```
 
 ## Attribution

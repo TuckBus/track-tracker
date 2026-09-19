@@ -434,7 +434,26 @@ class World:
     # -- output -----------------------------------------------------------
 
     def write(self, out_dir: str) -> dict:
+        """Write the world, clearing any previous generation first.
+
+        This clear is load-bearing. Snapshots are named by feed timestamp, so
+        regenerating with a different --start leaves the old files in place
+        and replay reads both timelines interleaved: vehicles teleport between
+        generations, the stall anchor resets on every jump, and detections
+        vanish. It presents as a quiet recall drop -- 1.00 to 0.50 on this set
+        -- with no error anywhere. Found the hard way.
+        """
+        import shutil
+
         os.makedirs(out_dir, exist_ok=True)
+        for stale in ("prt-bus", "prt-bus-alerts", "prt-rail", "prt-rail-alerts",
+                      "amtrak"):
+            shutil.rmtree(os.path.join(out_dir, stale), ignore_errors=True)
+        for stale_file in ("truth.json", "gtfs-static.zip"):
+            path = os.path.join(out_dir, stale_file)
+            if os.path.exists(path):
+                os.remove(path)
+
         veh_dir = os.path.join(out_dir, "prt-bus")
         alert_dir = os.path.join(out_dir, "prt-bus-alerts")
         os.makedirs(veh_dir, exist_ok=True)
