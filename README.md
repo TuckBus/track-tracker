@@ -19,7 +19,7 @@ The app runs at `http://localhost:3000`. Configure the services described in [DE
 - `POST /api/poll` runs an immediate poll.
 - `POST /api/anomaly` checks a bus stop and line against the latest PRT telemetry.
 - `GET /api/stops` returns the cached PRT GTFS stop catalog used by the searchable stop picker.
-- `GET /api/cron/poll` is invoked by Vercel Cron every five minutes.
+- `GET /api/cron/poll` is invoked by Vercel Cron once daily at 00:00 UTC on Hobby plans.
 - `POST /api/actions/{id}/execute` executes a simulated email or calendar mitigation.
 
 The dashboard includes a live coordinate map and a complete tracked-vehicle table. Provider and Nemotron requests emit structured JSON logs on the server; API keys are never included in those logs.
