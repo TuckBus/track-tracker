@@ -53,17 +53,18 @@ describe("Nemotron intelligence", () => {
   it("uses an early-warning policy for credible but unconfirmed delays", () => {
     const prompt = buildPrompt([], stagedTelemetry("developing-delay").telemetry, []);
 
-    expect(prompt).toContain("Favor an early, clearly labeled possible-delay warning");
-    expect(prompt).toContain("at least 50% of its reporting vehicles are below 10 miles per hour");
-    expect(prompt).toContain("multiple vehicles have missing positions");
+    expect(prompt).toContain("Filter noise aggressively");
+    expect(prompt).toContain("null speed means the sensor did not report a usable speed");
+    expect(prompt).toContain("at least 50% of at least three vehicles with measurable speeds");
+    expect(prompt).toContain("posted notices alone are not enough");
     expect(prompt).toContain("do not claim a confirmed delay");
     expect(prompt).toContain('"slow_under_10_mph":7');
     expect(prompt).toContain('"missing_position_count":2');
   });
 
   it("adjusts the slow-vehicle threshold from the configured sensitivity", () => {
-    expect(buildPrompt([], [], [], 0)).toContain("at least 100% of its reporting vehicles");
-    expect(buildPrompt([], [], [], 100)).toContain("at least 0% of its reporting vehicles");
+    expect(buildPrompt([], [], [], 0)).toContain("at least 100% of at least three vehicles with measurable speeds");
+    expect(buildPrompt([], [], [], 100)).toContain("at least 0% of at least three vehicles with measurable speeds");
   });
 
   it("enforces sensitivity when the model returns no warning", () => {
@@ -77,5 +78,25 @@ describe("Nemotron intelligence", () => {
 
     expect(applySensitivity(onTime, telemetry, 0).action).toBe("none");
     expect(applySensitivity(onTime, telemetry, 100).action).toBe("trigger_ui_alert");
+  });
+
+  it("does not treat null speeds or missing positions as a delay signal", () => {
+    const telemetry = stagedTelemetry("developing-delay").telemetry.map((item) => ({
+      ...item,
+      speed_mph: null,
+    }));
+    const onTime = parseAction({ status: "on_time", action: "none", message: "Looks good." });
+
+    expect(applySensitivity(onTime, telemetry, 100).action).toBe("none");
+  });
+
+  it("requires at least two measurable slow vehicles before warning", () => {
+    const telemetry = stagedTelemetry("developing-delay").telemetry.map((item, index) => ({
+      ...item,
+      speed_mph: index === 0 ? 1 : index === 1 ? 2 : 25,
+    }));
+    const onTime = parseAction({ status: "on_time", action: "none", message: "Looks good." });
+
+    expect(applySensitivity(onTime, telemetry, 50).action).toBe("none");
   });
 });

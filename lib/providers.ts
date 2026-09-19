@@ -75,10 +75,17 @@ export async function fetchPrtAlerts(url = process.env.PRT_SERVICE_ALERTS_URL ||
 export async function fetchOpenSky(url = process.env.OPENSKY_STATES_URL || "https://opensky-network.org/api/states/all"): Promise<TelemetryRecord[]> {
   const query = new URLSearchParams({ lamin: "40.2", lamax: "40.7", lomin: "-80.5", lomax: "-79.6" });
   log.info("Fetching telemetry provider", { provider: "opensky", url });
-  const response = await fetch(`${url}?${query}`, { headers: { "User-Agent": userAgent }, cache: "no-store", signal: AbortSignal.timeout(providerTimeoutMs) });
+  let response: Response;
+  try {
+    response = await fetch(`${url}${url.includes("?") ? "&" : "?"}${query}`, { headers: { "User-Agent": userAgent }, cache: "no-store", signal: AbortSignal.timeout(providerTimeoutMs) });
+  } catch (error) {
+    const cause = error instanceof Error && error.cause instanceof Error ? `; cause: ${error.cause.message}` : "";
+    throw new Error(`OpenSky request failed for ${url}: ${error instanceof Error ? error.message : String(error)}${cause}`);
+  }
   if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
     log.warn("Telemetry provider returned an error", { provider: "opensky", url, status: response.status });
-    throw new Error(`HTTP ${response.status}`);
+    throw new Error(`OpenSky HTTP ${response.status}${body ? `: ${body}` : ""}`);
   }
   const payload = await response.json() as { states?: unknown[][] };
   const observed = new Date().toISOString();
@@ -104,7 +111,10 @@ export async function fetchOpenSky(url = process.env.OPENSKY_STATES_URL || "http
 
 export async function fetchAmtrak(): Promise<TelemetryRecord[]> {
   const url = process.env.AMTRAK_TELEMETRY_URL;
-  if (!url) return [];
+  if (!url) {
+    log.warn("Amtrak telemetry is not configured; no train positions will be shown");
+    return [];
+  }
   log.info("Fetching telemetry provider", { provider: "amtrak", url });
   const response = await fetch(url, { headers: { "User-Agent": userAgent }, cache: "no-store", signal: AbortSignal.timeout(providerTimeoutMs) });
   if (!response.ok) {

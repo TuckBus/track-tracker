@@ -32,6 +32,7 @@ function riskSignals(telemetry: TelemetryRecord[], alerts: ServiceAlert[]) {
     posted_alert_count: alerts.length,
     posted_alert_routes: [...new Set(alerts.flatMap((alert) => alert.routes))],
     stationary_vehicle_count: telemetry.filter((item) => item.speed_mph !== null && item.speed_mph < 1).length,
+    measurable_speed_count: telemetry.filter((item) => item.speed_mph !== null).length,
   };
 }
 
@@ -48,17 +49,17 @@ export function applySensitivity(action: ActionPayload, telemetry: TelemetryReco
       reasoning: "AI warnings are disabled at zero sensitivity.",
     };
   }
-  const routeSignals = new Map<string, { total: number; slow: number; missing: number }>();
+  const routeSignals = new Map<string, { total: number; slow: number }>();
   for (const item of telemetry) {
     if (!item.route) continue;
-    const signal = routeSignals.get(item.route) || { total: 0, slow: 0, missing: 0 };
+    const signal = routeSignals.get(item.route) || { total: 0, slow: 0 };
+    if (item.speed_mph === null) continue;
     signal.total += 1;
-    if (item.speed_mph !== null && item.speed_mph < 10) signal.slow += 1;
-    if (item.latitude === null || item.longitude === null) signal.missing += 1;
+    if (item.speed_mph < 10) signal.slow += 1;
     routeSignals.set(item.route, signal);
   }
   const affectedRoutes = [...routeSignals.entries()]
-    .filter(([, signal]) => (signal.slow / signal.total) * 100 >= slowVehicleThreshold || signal.missing >= (normalizedSensitivity >= 75 ? 1 : 2))
+    .filter(([, signal]) => signal.total >= 3 && signal.slow >= 2 && (signal.slow / signal.total) * 100 >= slowVehicleThreshold)
     .map(([route]) => route);
   const stationaryVehicles = telemetry.filter((item) => item.speed_mph !== null && item.speed_mph < 1).length;
   const qualifies = affectedRoutes.length > 0 || stationaryVehicles >= 2;
@@ -99,7 +100,7 @@ export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], 
   const normalizedSensitivity = Math.max(0, Math.min(100, sensitivity));
   const slowVehicleThreshold = 100 - normalizedSensitivity;
   return `You are a cautious transit early-warning assistant. Return ONLY one JSON object with status ("disrupted"|"on_time"|"anomalous"), action ("trigger_ui_alert"|"draft_email"|"reschedule_calendar"|"none"), message, affected_routes (an array of route IDs, or [] if none), and reasoning (a short plain-language explanation of the evidence and decision). Write the message and reasoning for a traveler, not a developer: use plain language, explain what happened and what they should do, and avoid acronyms, raw IDs, JSON, markdown, and internal system terms.
-Sensitivity policy: the configured sensitivity is ${normalizedSensitivity}/100. Favor an early, clearly labeled possible-delay warning over an on-time result when the evidence is credible. Do not wait for a posted service alert or a confirmed missed trip. For each route, classify it as disrupted and use action "trigger_ui_alert" when at least ${slowVehicleThreshold}% of its reporting vehicles are below 10 miles per hour, when multiple vehicles have missing positions, or when several vehicles are stopped or nearly stopped. A single isolated slow vehicle or one missing position is not enough by itself. When the evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
+Sensitivity policy: the configured sensitivity is ${normalizedSensitivity}/100. Filter noise aggressively. A null speed means the sensor did not report a usable speed; it is unknown, not zero, stopped, or delayed, and must not be treated as evidence of a disruption. A missing position is also inconclusive by itself. Posted service notices are context only: many notices can describe separate minor issues and must not be treated as proof of a widespread outage. Do not issue an alert from notices alone. For each route, classify it as disrupted and use action "trigger_ui_alert" only when at least ${slowVehicleThreshold}% of at least three vehicles with measurable speeds are below 10 miles per hour and at least two vehicles support that signal. A single slow vehicle, null speeds, missing positions, or posted notices alone are not enough. Prefer on_time when evidence is ambiguous or data quality is poor. When evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
 ITINERARY:
 ${JSON.stringify(itinerary)}
 TELEMETRY:
