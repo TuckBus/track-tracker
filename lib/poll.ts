@@ -5,13 +5,13 @@ import type { ActionPayload, DispatchState, TelemetryRecord } from "./types";
 import { errorMessage, log } from "./logging";
 import { stagedTelemetry, type TestScenario } from "./test-telemetry";
 
-export async function poll(options: { testScenario?: TestScenario; sensitivity?: number; clearAlerts?: boolean } = {}): Promise<{ action: ActionPayload; state: DispatchState }> {
+export async function poll(options: { testScenario?: TestScenario; clearAlerts?: boolean } = {}): Promise<{ action: ActionPayload; state: DispatchState }> {
   const startedAt = Date.now();
   log.info("Starting telemetry poll", options.testScenario ? { test_scenario: options.testScenario } : undefined);
   if (options.testScenario) {
     const fixture = stagedTelemetry(options.testScenario);
     const current = await getState();
-    const analysis = await analyze(current.itineraries, fixture.telemetry, fixture.service_alerts, options.sensitivity);
+    const analysis = await analyze(current.itineraries, fixture.telemetry, fixture.service_alerts);
     const state: DispatchState = {
       ...current,
       alerts: options.clearAlerts ? [] : current.alerts,
@@ -55,7 +55,7 @@ export async function poll(options: { testScenario?: TestScenario; sensitivity?:
   }
   const service_alerts = await serviceAlertsRequest;
   const current = await getState();
-  const analysis = await analyze(current.itineraries, telemetry, service_alerts, options.sensitivity);
+  const analysis = await analyze(current.itineraries, telemetry, service_alerts);
   const action = analysis.action;
   let state: DispatchState = {
     ...current,

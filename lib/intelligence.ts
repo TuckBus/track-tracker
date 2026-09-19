@@ -36,58 +36,7 @@ function riskSignals(telemetry: TelemetryRecord[], alerts: ServiceAlert[]) {
   };
 }
 
-export function applySensitivity(action: ActionPayload, telemetry: TelemetryRecord[], sensitivity: number): ActionPayload {
-  const normalizedSensitivity = Math.max(0, Math.min(100, sensitivity));
-  const slowVehicleThreshold = 100 - normalizedSensitivity;
-  if (normalizedSensitivity === 0) {
-    return {
-      ...action,
-      status: "on_time",
-      action: "none",
-      message: "No actionable disruption detected at zero sensitivity.",
-      affected_routes: [],
-      reasoning: "AI warnings are disabled at zero sensitivity.",
-    };
-  }
-  const routeSignals = new Map<string, { total: number; slow: number }>();
-  for (const item of telemetry) {
-    if (!item.route) continue;
-    const signal = routeSignals.get(item.route) || { total: 0, slow: 0 };
-    if (item.speed_mph === null) continue;
-    signal.total += 1;
-    if (item.speed_mph < 10) signal.slow += 1;
-    routeSignals.set(item.route, signal);
-  }
-  const affectedRoutes = [...routeSignals.entries()]
-    .filter(([, signal]) => signal.total >= 3 && signal.slow >= 2 && (signal.slow / signal.total) * 100 >= slowVehicleThreshold)
-    .map(([route]) => route);
-  const stationaryVehicles = telemetry.filter((item) => item.speed_mph !== null && item.speed_mph < 1).length;
-  const qualifies = affectedRoutes.length > 0 || stationaryVehicles >= 2;
-
-  if (!qualifies && action.action === "trigger_ui_alert") {
-    return {
-      ...action,
-      status: "on_time",
-      action: "none",
-      message: "No actionable disruption detected at the selected sensitivity.",
-      affected_routes: [],
-      reasoning: "The live tracking data did not meet the selected early-warning threshold.",
-    };
-  }
-  if (qualifies && action.action === "none") {
-    return {
-      ...action,
-      status: "disrupted",
-      action: "trigger_ui_alert",
-      message: `Possible delay detected on ${affectedRoutes.join(", ") || "the monitored transit network"}.`,
-      affected_routes: affectedRoutes,
-      reasoning: `The selected sensitivity threshold was met: ${slowVehicleThreshold}% of reporting vehicles on an affected route are below 10 miles per hour, or multiple positions are missing.`,
-    };
-  }
-  return action;
-}
-
-export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[], sensitivity = 50): string {
+export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[]): string {
   const compactTelemetry = telemetry.map((item) => ({
     source: item.source,
     vehicle_id: item.vehicle_id,
@@ -97,10 +46,8 @@ export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], 
     position_available: item.latitude !== null && item.longitude !== null,
     metadata: item.source === "opensky" ? { callsign: item.metadata.callsign, airport: item.metadata.airport } : undefined,
   }));
-  const normalizedSensitivity = Math.max(0, Math.min(100, sensitivity));
-  const slowVehicleThreshold = 100 - normalizedSensitivity;
   return `You are a cautious transit early-warning assistant. Return ONLY one JSON object with status ("disrupted"|"on_time"|"anomalous"), action ("trigger_ui_alert"|"draft_email"|"reschedule_calendar"|"none"), message, affected_routes (an array of route IDs, or [] if none), and reasoning (a short plain-language explanation of the evidence and decision). Write the message and reasoning for a traveler, not a developer: use plain language, explain what happened and what they should do, and avoid acronyms, raw IDs, JSON, markdown, and internal system terms.
-Sensitivity policy: the configured sensitivity is ${normalizedSensitivity}/100. Filter noise aggressively. A null speed means the sensor did not report a usable speed; it is unknown, not zero, stopped, or delayed, and must not be treated as evidence of a disruption. A missing position is also inconclusive by itself. Posted service notices are context only: many notices can describe separate minor issues and must not be treated as proof of a widespread outage. Do not issue an alert from notices alone. For each route, classify it as disrupted and use action "trigger_ui_alert" only when at least ${slowVehicleThreshold}% of at least three vehicles with measurable speeds are below 10 miles per hour and at least two vehicles support that signal. A single slow vehicle, null speeds, missing positions, or posted notices alone are not enough. Prefer on_time when evidence is ambiguous or data quality is poor. When evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
+Decision policy: you decide what is important to note. Filter noise aggressively. A null speed means the sensor did not report a usable speed; it is unknown, not zero, stopped, or delayed, and is generally low-concern evidence. Never treat null speed as 0 mph or as evidence that a vehicle is absent. A null position means the location is unknown, not that the vehicle is absent. One or two unknown positions on a route are usually routine data quality noise; only call out missing positions when the pattern is broad enough to affect confidence in the route assessment. Posted service notices are context only: many notices can describe separate minor issues and must not be treated as proof of a widespread outage. Do not issue an alert from notices alone. Use action "trigger_ui_alert" only when the combined telemetry, route context, and service notices support a meaningful traveler-facing risk. Prefer on_time when evidence is ambiguous or data quality is poor. You may mention a broad data-quality limitation in reasoning without turning it into a service disruption. When evidence suggests risk but is not conclusive, say "possible delay" or "early warning" in the message and explain the evidence; do not claim a confirmed delay.
 ITINERARY:
 ${JSON.stringify(itinerary)}
 TELEMETRY:
@@ -140,11 +87,11 @@ function endpointFor(configuredEndpoint: string) {
   return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
 }
 
-export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[], sensitivity = 50): Promise<{ action: ActionPayload; status: "connected" | "failed" | "not_configured"; error?: string }> {
+export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[]): Promise<{ action: ActionPayload; status: "connected" | "failed" | "not_configured"; error?: string }> {
   const configuredEndpoint = process.env.BREV_NIM_ENDPOINT?.trim() || process.env.NEMOTRON_ENDPOINT?.trim();
   if (!configuredEndpoint) {
     log.warn("Nemotron is not configured; using deterministic fallback", { telemetry_count: telemetry.length });
-    return { action: applySensitivity(fallbackAction(telemetry), telemetry, sensitivity), status: "not_configured" };
+    return { action: fallbackAction(telemetry), status: "not_configured" };
   }
   const endpoint = endpointFor(configuredEndpoint);
   const configuredModel = process.env.BREV_NIM_MODEL?.trim() || process.env.NEMOTRON_MODEL?.trim() || "nvidia/llama-3.1-nemotron-nano-vl-8b-v1";
@@ -157,7 +104,7 @@ export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[]
       headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
       body: JSON.stringify({
         model: configuredModel,
-        messages: [{ role: "system", content: buildPrompt(itinerary, telemetry, alerts, sensitivity) }],
+        messages: [{ role: "system", content: buildPrompt(itinerary, telemetry, alerts) }],
         temperature: 0,
         max_tokens: 400,
         chat_template_kwargs: { enable_thinking: false },
@@ -174,7 +121,7 @@ export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[]
     const result = JSON.parse(responseText) as { choices?: { message?: { content?: string } }[] };
     const content = result.choices?.[0]?.message?.content;
     if (!content) throw new Error("Brev NIM response did not contain message content");
-    return { action: applySensitivity(parseAction(content), telemetry, sensitivity), status: "connected" };
+    return { action: parseAction(content), status: "connected" };
   } catch (error) {
     lastError = errorMessage(error);
     if (lastError.includes("HTTP 403")) lastError = `${lastError}; the Brev endpoint rejected access before model inference; verify the public NIM URL and proxy credentials`;
@@ -183,5 +130,5 @@ export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[]
     log.warn("Brev NIM request failed", { endpoint, model: configuredModel, error: lastError });
   }
   log.error("Brev NIM request failed; using deterministic fallback", { endpoint, model: configuredModel, error: lastError });
-  return { action: applySensitivity(fallbackAction(telemetry), telemetry, sensitivity), status: "failed", error: lastError };
+  return { action: fallbackAction(telemetry), status: "failed", error: lastError };
 }

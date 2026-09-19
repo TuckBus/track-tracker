@@ -130,10 +130,9 @@ The dashboard automatically:
 - Runs an immediate poll when **Run check now** is clicked.
 - Displays provider failures without crashing the UI.
 
-The Proactive Action Center includes a Nemotron sensitivity slider from 0 to
-100. Higher values lower the early-warning threshold and make possible-delay
-alerts more likely. The selected value is sent with the next telemetry check
-and is not stored as a server-wide setting.
+Nemotron decides which telemetry signals are important enough to report. Null
+speeds are treated as unknown sensor data rather than zero miles per hour, and
+isolated missing positions are treated as routine data-quality noise.
 
 ## Test the API manually
 
