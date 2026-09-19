@@ -5,7 +5,7 @@ import type { ActionPayload, DispatchState, TelemetryRecord } from "./types";
 import { errorMessage, log } from "./logging";
 import { stagedTelemetry, type TestScenario } from "./test-telemetry";
 
-export async function poll(options: { testScenario?: TestScenario; sensitivity?: number } = {}): Promise<{ action: ActionPayload; state: DispatchState }> {
+export async function poll(options: { testScenario?: TestScenario; sensitivity?: number; clearAlerts?: boolean } = {}): Promise<{ action: ActionPayload; state: DispatchState }> {
   const startedAt = Date.now();
   log.info("Starting telemetry poll", options.testScenario ? { test_scenario: options.testScenario } : undefined);
   if (options.testScenario) {
@@ -14,6 +14,7 @@ export async function poll(options: { testScenario?: TestScenario; sensitivity?:
     const analysis = await analyze(current.itineraries, fixture.telemetry, fixture.service_alerts, options.sensitivity);
     const state: DispatchState = {
       ...current,
+      alerts: options.clearAlerts ? [] : current.alerts,
       telemetry: fixture.telemetry,
       provider_errors: [],
       nemotron: { status: analysis.status, ...(analysis.error ? { error: analysis.error } : {}), ...(analysis.action.reasoning ? { explanation: analysis.action.reasoning } : {}), checked_at: new Date().toISOString() },
@@ -32,6 +33,11 @@ export async function poll(options: { testScenario?: TestScenario; sensitivity?:
   ] as const;
   const telemetry: TelemetryRecord[] = [];
   const errors: string[] = [];
+  const serviceAlertsRequest = fetchPrtAlerts().catch((error) => {
+    errors.push(`prt-alerts: ${errorMessage(error)}`);
+    log.warn("PRT service alerts failed", { error: errorMessage(error) });
+    return [];
+  });
   const results = await Promise.all(providers.map(async ([name, provider]) => {
     try {
       const records = await provider();
@@ -47,18 +53,13 @@ export async function poll(options: { testScenario?: TestScenario; sensitivity?:
     if ("records" in result) telemetry.push(...(result.records || []));
     else errors.push(`${result.name}: ${result.error || "provider failed"}`);
   }
-  let service_alerts = [] as Awaited<ReturnType<typeof fetchPrtAlerts>>;
-  try {
-    service_alerts = await fetchPrtAlerts();
-  } catch (error) {
-    errors.push(`prt-alerts: ${errorMessage(error)}`);
-    log.warn("PRT service alerts failed", { error: errorMessage(error) });
-  }
+  const service_alerts = await serviceAlertsRequest;
   const current = await getState();
   const analysis = await analyze(current.itineraries, telemetry, service_alerts, options.sensitivity);
   const action = analysis.action;
   let state: DispatchState = {
     ...current,
+    alerts: options.clearAlerts ? [] : current.alerts,
     telemetry,
     provider_errors: errors,
     nemotron: { status: analysis.status, ...(analysis.error ? { error: analysis.error } : {}), ...(analysis.action.reasoning ? { explanation: analysis.action.reasoning } : {}), checked_at: new Date().toISOString() },

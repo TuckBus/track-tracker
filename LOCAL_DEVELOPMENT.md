@@ -107,7 +107,6 @@ Optional provider overrides:
 PRT_VEHICLE_POSITIONS_URL=https://truetime.portauthority.org/gtfsrt-bus/vehicles
 OPENSKY_STATES_URL=https://opensky-network.org/api/states/all
 AMTRAK_TELEMETRY_URL=https://your-authorized-amtrak-adapter.example/trains
-PRT_GTFS_STATIC_URL=https://www.rideprt.org/developerresources/GTFS.zip
 ```
 
 The PRT URL must not include `?debug`; that response is diagnostic content, not GTFS-Realtime protobuf.

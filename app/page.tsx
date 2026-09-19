@@ -38,26 +38,48 @@ export default function Home() {
   const [stopMenuOpen, setStopMenuOpen] = useState(false);
   const [stopsLoading, setStopsLoading] = useState(true);
   const [sensitivity, setSensitivity] = useState(50);
+  const [sensitivityChanged, setSensitivityChanged] = useState(false);
   const [actionError, setActionError] = useState("");
   const pollingRef = useRef(false);
+  const sensitivityChangedRef = useRef(false);
+  const sensitivityRef = useRef(sensitivity);
   const alertSoundRef = useRef<AudioContext | null>(null);
+  sensitivityRef.current = sensitivity;
 
-  const checkNow = useCallback(async () => {
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem("nemotron-sensitivity"));
+    if (Number.isFinite(stored)) {
+      const value = Math.max(0, Math.min(100, stored));
+      setSensitivity(value);
+      sensitivityRef.current = value;
+    }
+  }, []);
+
+  const checkNow = useCallback(async (options: { clearAlerts?: boolean } = {}) => {
     if (pollingRef.current) return;
     pollingRef.current = true;
     setPolling(true);
+    setActionError("");
+    setInitialLoading(true);
+    setInitialLoadStatus("Refreshing live telemetry and generating the latest AI analysis...");
     try {
-      const response = await fetch("/api/poll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sensitivity }), signal: AbortSignal.timeout(30000) });
+      const clearAlerts = options.clearAlerts === true || sensitivityChangedRef.current;
+      const response = await fetch("/api/poll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sensitivity: sensitivityRef.current, clear_alerts: clearAlerts }), signal: AbortSignal.timeout(30000) });
       const result = await response.json() as { action: ActionPayload; state: DispatchState };
       if (!response.ok) throw new Error("Telemetry check failed");
       setState(result.state);
+      if (clearAlerts) setToast(null);
+      sensitivityChangedRef.current = false;
+      setSensitivityChanged(false);
       if (result.action.action !== "none") {
         setToast(result.action);
         if (result.action.status === "anomalous") {
           try {
             const audio = alertSoundRef.current || new AudioContext();
             alertSoundRef.current = audio;
-            if (audio.state === "suspended") await audio.resume();
+            if (audio.state === "suspended") {
+              void audio.resume().catch(() => undefined);
+            }
             const oscillator = audio.createOscillator();
             const gain = audio.createGain();
             oscillator.type = "square";
@@ -74,11 +96,22 @@ export default function Home() {
           }
         }
       }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Telemetry check failed");
     } finally {
       setPolling(false);
       pollingRef.current = false;
+      setInitialLoading(false);
     }
-  }, [sensitivity]);
+  }, []);
+
+  function changeSensitivity(value: number) {
+    setSensitivity(value);
+    sensitivityRef.current = value;
+    window.localStorage.setItem("nemotron-sensitivity", String(value));
+    sensitivityChangedRef.current = true;
+    setSensitivityChanged(true);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +246,7 @@ export default function Home() {
       <div className="eyebrow"><span className="pulse" /> DISPATCH / VERCEL MONITOR</div>
       <h1>Your schedule, defended.</h1>
       <p className="subtitle">A predictive logistics engine watching Pittsburgh transit before delays reach you.</p>
-      <button className="check" onClick={checkNow} disabled={polling}>{polling ? "Checking..." : "Run check now"} <span>↗</span></button>
+      <button className="check" onClick={() => void checkNow()} disabled={polling}>{polling ? "Checking..." : "Run check now"} <span>↗</span></button>
     </header>
     {toast && <div className="toast"><strong>Proactive alert</strong><span>{toast.message}</span></div>}
     <section className="status-row"><div><span className="label">SYSTEM STATUS</span><strong className="online">● Monitoring live telemetry</strong></div><div className="status-right"><span className={`nemotron-status ${state.nemotron.status}`} title={state.nemotron.error || undefined}><span className="status-dot" /> Nemotron {state.nemotron.status === "connected" ? "connected" : state.nemotron.status === "failed" ? "unavailable · fallback active" : "not configured"}</span><div className="last-check">{timeAgo(state.last_poll_at)}</div></div></section>
@@ -239,7 +272,7 @@ export default function Home() {
       {lookupError && <div className="errors">{lookupError}</div>}
     </section>
     <section className="panel alert-panel"><div className="panel-title"><span>PROACTIVE ACTION CENTER</span><span className="count">{state.alerts.filter((item) => item.source === "nemotron").length}</span></div>
-      <div className="sensitivity-control"><label htmlFor="nemotron-sensitivity">Nemotron sensitivity <strong>{sensitivity}/100</strong></label><input id="nemotron-sensitivity" type="range" min="0" max="100" step="5" value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} /><span>Higher values create earlier possible-delay warnings.</span></div>
+      <div className="sensitivity-control"><label htmlFor="nemotron-sensitivity">Nemotron sensitivity <strong>{sensitivity}/100</strong></label><input id="nemotron-sensitivity" type="range" min="0" max="100" step="1" value={sensitivity} onInput={(event) => changeSensitivity(Number(event.currentTarget.value))} /><span>0 disables warnings; 50 balances caution and noise; 100 flags nearly any developing risk.</span>{sensitivityChanged && <strong>Run a manual check to refresh AI warnings.</strong>}</div>
       {active ? <div className="alert-card"><div className="warning">!</div><div className="alert-content"><span className="alert-label">NEMOTRON EARLY WARNING · {active.status.toUpperCase()}</span><h2>{active.message}</h2><p>{active.reasoning || "Live vehicle data indicates a developing service risk."}</p><p><strong>Routes:</strong> {active.affected_routes?.length ? active.affected_routes.join(", ") : "Route still being determined"} · <strong>Recommended:</strong> allow extra travel time and check again before departing.</p><div className="actions"><button onClick={() => execute(active, "draft_email")}>Draft email</button><button onClick={() => execute(active, "reschedule_calendar")}>Reschedule calendar</button></div>{actionError && <div className="errors">{actionError}</div>}</div></div> : <div className="empty"><span>✓</span><div><strong>No new AI-predicted delay</strong><p>Nemotron is watching for developing issues that PRT has not already posted.</p></div></div>}
     </section>
     {state.provider_errors.length > 0 && <div className="errors">Some live sources are unavailable. Fallback monitoring remains active: {state.provider_errors.join(" · ")}</div>}

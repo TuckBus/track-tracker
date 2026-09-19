@@ -1,4 +1,6 @@
 import AdmZip from "adm-zip";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { log } from "./logging";
 
 export type PrtStop = {
@@ -10,7 +12,6 @@ export type PrtStop = {
 };
 type StopCatalog = { stops: PrtStop[]; routesByStop: Map<string, string[]> };
 
-const feedUrl = process.env.PRT_GTFS_STATIC_URL || "https://www.rideprt.org/developerresources/GTFS.zip";
 let cachedCatalog: StopCatalog | null = null;
 let loading: Promise<StopCatalog> | null = null;
 
@@ -31,10 +32,9 @@ function parseCsvLine(line: string) {
 }
 
 async function loadStops(): Promise<StopCatalog> {
-  log.info("Fetching PRT static GTFS stop catalog", { url: feedUrl });
-  const response = await fetch(feedUrl, { cache: "force-cache", signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`PRT GTFS static feed HTTP ${response.status}`);
-  const archive = new AdmZip(Buffer.from(await response.arrayBuffer()));
+  const feedPath = path.join(process.cwd(), "public", "GTFS.zip");
+  log.info("Reading bundled PRT static GTFS stop catalog", { path: feedPath });
+  const archive = new AdmZip(await readFile(feedPath));
   const entry = archive.getEntry("stops.txt");
   if (!entry) throw new Error("PRT GTFS static feed did not contain stops.txt");
   const lines = entry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);

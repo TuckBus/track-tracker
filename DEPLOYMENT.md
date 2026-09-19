@@ -203,12 +203,11 @@ Vercel Cron automatically sends `Authorization: Bearer <CRON_SECRET>` to the cro
 | `PRT_VEHICLE_POSITIONS_URL` | No | `https://truetime.portauthority.org/gtfsrt-bus/vehicles` |
 | `OPENSKY_STATES_URL` | No | `https://opensky-network.org/api/states/all` |
 | `AMTRAK_TELEMETRY_URL` | No | Disabled when unset |
-| `PRT_GTFS_STATIC_URL` | No | `https://www.rideprt.org/developerresources/GTFS.zip` |
 | `PRT_SERVICE_ALERTS_URL` | No | `https://truetime.portauthority.org/gtfsrt-bus/alerts` |
 
 PRT is parsed as GTFS-Realtime protobuf. Use the vehicle feed without the `?debug` query parameter; that debug response is not protobuf and will be rejected. OpenSky is queried using a Pittsburgh bounding box. Amtrak accepts either a JSON array or `{ "trains": [...] }` and filters train numbers 42 and 43. Confirm that any Amtrak endpoint is authorized and stable before using it.
 
-The searchable stop picker loads the PRT static GTFS ZIP and parses `stops.txt` through `/api/stops`. The catalog is cached for the lifetime of a serverless instance.
+The searchable stop picker reads the bundled `public/GTFS.zip` file and parses `stops.txt` through `/api/stops`. The catalog is cached for the lifetime of a serverless instance.
 Polling also ingests posted PRT GTFS-Realtime service alerts and includes them in the risk analysis. Routes with posted alerts are highlighted on the map.
 
 ## Vercel Cron

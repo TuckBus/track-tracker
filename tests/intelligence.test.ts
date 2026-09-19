@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, fallbackAction, parseAction } from "../lib/intelligence";
+import { applySensitivity, buildPrompt, fallbackAction, parseAction } from "../lib/intelligence";
 import { stagedTelemetry } from "../lib/test-telemetry";
 
 describe("Nemotron intelligence", () => {
@@ -54,7 +54,7 @@ describe("Nemotron intelligence", () => {
     const prompt = buildPrompt([], stagedTelemetry("developing-delay").telemetry, []);
 
     expect(prompt).toContain("Favor an early, clearly labeled possible-delay warning");
-    expect(prompt).toContain("at least 25% of its reporting vehicles are below 10 miles per hour");
+    expect(prompt).toContain("at least 50% of its reporting vehicles are below 10 miles per hour");
     expect(prompt).toContain("multiple vehicles have missing positions");
     expect(prompt).toContain("do not claim a confirmed delay");
     expect(prompt).toContain('"slow_under_10_mph":7');
@@ -62,7 +62,20 @@ describe("Nemotron intelligence", () => {
   });
 
   it("adjusts the slow-vehicle threshold from the configured sensitivity", () => {
-    expect(buildPrompt([], [], [], 0)).toContain("at least 50% of its reporting vehicles");
-    expect(buildPrompt([], [], [], 100)).toContain("at least 10% of its reporting vehicles");
+    expect(buildPrompt([], [], [], 0)).toContain("at least 100% of its reporting vehicles");
+    expect(buildPrompt([], [], [], 100)).toContain("at least 0% of its reporting vehicles");
+  });
+
+  it("enforces sensitivity when the model returns no warning", () => {
+    const telemetry = stagedTelemetry("developing-delay").telemetry.map((item, index) => ({
+      ...item,
+      speed_mph: index < 4 ? 1.5 : 15,
+      latitude: 40.4,
+      longitude: -80,
+    }));
+    const onTime = parseAction({ status: "on_time", action: "none", message: "Looks good." });
+
+    expect(applySensitivity(onTime, telemetry, 0).action).toBe("none");
+    expect(applySensitivity(onTime, telemetry, 100).action).toBe("trigger_ui_alert");
   });
 });
