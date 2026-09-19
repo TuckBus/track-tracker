@@ -1,0 +1,122 @@
+import AdmZip from "adm-zip";
+import { log } from "./logging";
+
+export type PrtStop = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  routes?: string[];
+};
+type StopCatalog = { stops: PrtStop[]; routesByStop: Map<string, string[]> };
+
+const feedUrl = process.env.PRT_GTFS_STATIC_URL || "https://www.rideprt.org/developerresources/GTFS.zip";
+let cachedCatalog: StopCatalog | null = null;
+let loading: Promise<StopCatalog> | null = null;
+
+function parseCsvLine(line: string) {
+  const fields: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') quoted = !quoted;
+    else if (character === "," && !quoted) {
+      fields.push(current);
+      current = "";
+    } else current += character;
+  }
+  fields.push(current);
+  return fields.map((value) => value.trim().replace(/^"(.*)"$/, "$1").replace(/""/g, '"'));
+}
+
+async function loadStops(): Promise<StopCatalog> {
+  log.info("Fetching PRT static GTFS stop catalog", { url: feedUrl });
+  const response = await fetch(feedUrl, { cache: "force-cache", signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`PRT GTFS static feed HTTP ${response.status}`);
+  const archive = new AdmZip(Buffer.from(await response.arrayBuffer()));
+  const entry = archive.getEntry("stops.txt");
+  if (!entry) throw new Error("PRT GTFS static feed did not contain stops.txt");
+  const lines = entry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(lines.shift() || "");
+  const column = (name: string) => headers.indexOf(name);
+  const idIndex = column("stop_id");
+  const nameIndex = column("stop_name");
+  const latIndex = column("stop_lat");
+  const lonIndex = column("stop_lon");
+  if ([idIndex, nameIndex, latIndex, lonIndex].some((index) => index < 0)) throw new Error("PRT stops.txt is missing a required column");
+  const stops = lines.flatMap((line) => {
+    const values = parseCsvLine(line);
+    const latitude = Number(values[latIndex]);
+    const longitude = Number(values[lonIndex]);
+    if (!values[idIndex] || !values[nameIndex] || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
+    return [{ id: values[idIndex], name: values[nameIndex], latitude, longitude }];
+  });
+  const routeNames = new Map<string, string>();
+  const routesEntry = archive.getEntry("routes.txt");
+  if (routesEntry) {
+    const routeLines = routesEntry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);
+    const routeHeaders = parseCsvLine(routeLines.shift() || "");
+    const routeIdIndex = routeHeaders.indexOf("route_id");
+    const shortNameIndex = routeHeaders.indexOf("route_short_name");
+    if (routeIdIndex >= 0 && shortNameIndex >= 0) {
+      for (const routeLine of routeLines) {
+        const values = parseCsvLine(routeLine);
+        if (values[routeIdIndex] && values[shortNameIndex]) routeNames.set(values[routeIdIndex], values[shortNameIndex]);
+      }
+    }
+  }
+  const tripRoutes = new Map<string, string>();
+  const tripsEntry = archive.getEntry("trips.txt");
+  if (tripsEntry) {
+    const tripLines = tripsEntry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);
+    const tripHeaders = parseCsvLine(tripLines.shift() || "");
+    const tripIdIndex = tripHeaders.indexOf("trip_id");
+    const tripRouteIndex = tripHeaders.indexOf("route_id");
+    if (tripIdIndex >= 0 && tripRouteIndex >= 0) {
+      for (const tripLine of tripLines) {
+        const values = parseCsvLine(tripLine);
+        if (values[tripIdIndex] && values[tripRouteIndex]) tripRoutes.set(values[tripIdIndex], values[tripRouteIndex]);
+      }
+    }
+  }
+  const routesByStop = new Map<string, Set<string>>();
+  const stopTimesEntry = archive.getEntry("stop_times.txt");
+  if (stopTimesEntry) {
+    const stopTimeLines = stopTimesEntry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);
+    const stopTimeHeaders = parseCsvLine(stopTimeLines.shift() || "");
+    const stopTimeIdIndex = stopTimeHeaders.indexOf("stop_id");
+    const stopTimeTripIndex = stopTimeHeaders.indexOf("trip_id");
+    if (stopTimeIdIndex >= 0 && stopTimeTripIndex >= 0) {
+      for (const stopTimeLine of stopTimeLines) {
+        const values = parseCsvLine(stopTimeLine);
+        const routeName = routeNames.get(tripRoutes.get(values[stopTimeTripIndex]) || "");
+        if (values[stopTimeIdIndex] && routeName) {
+          const routes = routesByStop.get(values[stopTimeIdIndex]) || new Set<string>();
+          routes.add(routeName);
+          routesByStop.set(values[stopTimeIdIndex], routes);
+        }
+      }
+    }
+  }
+  const normalizedRoutes = new Map<string, string[]>();
+  for (const [stopId, routes] of routesByStop) normalizedRoutes.set(stopId, [...routes].sort());
+  log.info("Loaded PRT static GTFS stop catalog", { stop_count: stops.length, stops_with_routes: normalizedRoutes.size });
+  return { stops: stops.map((stop) => ({ ...stop, routes: normalizedRoutes.get(stop.id) || [] })), routesByStop: normalizedRoutes };
+}
+
+export async function getPrtStops() {
+  if (cachedCatalog) return cachedCatalog.stops;
+  loading ??= loadStops().then((catalog) => {
+    cachedCatalog = catalog;
+    return catalog;
+  }).finally(() => {
+    loading = null;
+  });
+  return loading.then((catalog) => catalog.stops);
+}
+
+export async function getPrtStopRoutes(stopId: string) {
+  if (!cachedCatalog) await getPrtStops();
+  return cachedCatalog?.routesByStop.get(stopId) || [];
+}
