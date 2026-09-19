@@ -53,9 +53,11 @@ describe("Nemotron intelligence", () => {
   it("uses an early-warning policy for credible but unconfirmed delays", () => {
     const prompt = buildPrompt([], stagedTelemetry("developing-delay").telemetry, []);
 
-    expect(prompt).toContain("be moderately responsive to credible repeated slow-speed");
+    expect(prompt).toContain("be moderately sensitive and aim to identify");
+    expect(prompt).toContain("aim to identify at least one meaningful traveler-facing alert on every poll");
+    expect(prompt).toContain("Return \"none\" or \"on_time\" for a poll only when the available measurable evidence is genuinely clean");
     expect(prompt).toContain("null speed means the sensor did not report a usable speed");
-    expect(prompt).toContain("Use action \"trigger_ui_alert\" only when the combined telemetry");
+    expect(prompt).toContain("When the evidence supports a cautious concern but not a confirmed disruption");
     expect(prompt).toContain("Do not issue an alert from notices alone");
     expect(prompt).toContain("do not claim a confirmed delay");
     expect(prompt).toContain('"slow_under_10_mph":7');
