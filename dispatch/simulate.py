@@ -83,6 +83,23 @@ def build_routes() -> list[Route]:
     ]
 
 
+# Real routes are not one speed. A bus crawls through a congested commercial
+# stretch and moves on a busway, and that variation is spatial: it belongs to
+# the place, not to the vehicle. Without it in the fixture, a predictor that
+# learns per-segment speeds has nothing to learn and cannot be evaluated --
+# which is exactly what happened the first time we scored one.
+#
+# Multipliers on the nominal speed, indexed by how far along the route you are.
+# Each route gets a rotation of the same pattern so the profiles differ.
+SPEED_PROFILE = (0.45, 0.65, 1.35, 1.55, 1.25, 0.55, 0.95, 1.40)
+
+
+def profile_at(fraction: float, rotation: int) -> float:
+    n = len(SPEED_PROFILE)
+    i = int(max(0.0, min(0.9999, fraction)) * n)
+    return SPEED_PROFILE[(i + rotation) % n]
+
+
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = p2 - p1
@@ -149,6 +166,7 @@ class Vehicle:
     never_returns: bool = False
     force_stop_id: str = ""
     speed_mps: float = 8.5
+    profile_rotation: int = 0
     segment_len: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -185,7 +203,10 @@ class Vehicle:
     def step(self, t: int, rng: random.Random) -> None:
         if t < self.frozen_until:
             return
-        self.offset_m += self.speed_mps * TICK_SECONDS * rng.uniform(0.85, 1.15)
+        total = max(self.total_len, 1.0)
+        local = profile_at((self.offset_m % total) / total, self.profile_rotation)
+        self.offset_m += (self.speed_mps * local * TICK_SECONDS
+                          * rng.uniform(0.9, 1.1))
         if self.offset_m >= self.total_len:
             self.offset_m = 0.0
             self.trip_seq += 1
@@ -220,6 +241,7 @@ class World:
                         vehicle_id=f"{route.route_id}-{3000 + n}",
                         route=route,
                         offset_m=n * len(route.stops) * 95.0,
+                        profile_rotation=len(self.vehicles) // 5,
                     )
                 )
         self.scenarios: list[Scenario] = []
@@ -491,15 +513,26 @@ class World:
                      "stop_sequence"])
         trips = io.StringIO()
         tw = csv.writer(trips)
-        tw.writerow(["route_id", "service_id", "trip_id"])
+        tw.writerow(["route_id", "service_id", "trip_id", "shape_id"])
         routes_csv = io.StringIO()
         rw = csv.writer(routes_csv)
-        rw.writerow(["route_id", "route_short_name", "route_type"])
+        rw.writerow(["route_id", "route_short_name", "route_long_name",
+                     "route_type", "route_color"])
+        shapes_csv = io.StringIO()
+        sw = csv.writer(shapes_csv)
+        sw.writerow(["shape_id", "shape_pt_lat", "shape_pt_lon",
+                     "shape_pt_sequence"])
+        palette = ["0B5CD5", "0E7C5A", "B4231C", "6B3FD4"]
 
-        for route in self.routes:
-            rw.writerow([route.route_id, route.route_id, 3])
+        for idx, route in enumerate(self.routes):
+            rw.writerow([route.route_id, route.route_id,
+                         f"{route.stops[0][0]} - {route.stops[-1][0]}",
+                         3, palette[idx % len(palette)]])
             trip_id = f"{route.route_id}-T000"
-            tw.writerow([route.route_id, "WEEK", trip_id])
+            shape_id = f"{route.route_id}-SHP"
+            tw.writerow([route.route_id, "WEEK", trip_id, shape_id])
+            for seq, (_sid, lat, lon) in enumerate(route.stops):
+                sw.writerow([shape_id, f"{lat:.6f}", f"{lon:.6f}", seq])
             for seq, (stop_id, lat, lon) in enumerate(route.stops):
                 w.writerow([stop_id, f"{route.route_id} stop {seq}", f"{lat:.6f}",
                             f"{lon:.6f}"])
@@ -511,6 +544,7 @@ class World:
             zf.writestr("stop_times.txt", stop_times.getvalue())
             zf.writestr("trips.txt", trips.getvalue())
             zf.writestr("routes.txt", routes_csv.getvalue())
+            zf.writestr("shapes.txt", shapes_csv.getvalue())
             zf.writestr("agency.txt",
                         "agency_id,agency_name,agency_url,agency_timezone\n"
                         "PRT,Pittsburgh Regional Transit,"

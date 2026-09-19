@@ -1,6 +1,6 @@
 # Evaluation
 
-Generated 2026-09-19 17:35:31 from `fixtures/world`.
+Generated 2026-09-19 19:16:18 from `fixtures/world`.
 
 ## What was measured
 
@@ -12,12 +12,14 @@ A positive prediction is `act in {NOTIFY, INTERVENE}` -- the two branches that s
 |----------------------------|----|----|----|----|------|--------|------|----------|-------------|
 | detector                   |  4 |  6 |  0 |  8 | 0.40 | 1.00   | 0.57 |     3.33 |     6.7 min |
 | rules                      |  4 |  1 |  0 | 13 | 0.80 | 1.00   | 0.89 |     1.67 |     6.7 min |
+| rules (no layover join)    |  4 |  3 |  0 | 11 | 0.57 | 1.00   | 0.73 |     2.33 |     6.7 min |
 
 
 ## Where the errors are
 
 - **detector**: false positives FEED_ARTIFACTx1, STALL_DISABLEDx1, TIMEPOINT_HOLDx3, VANISHED_REALx1
 - **rules**: false positives TIMEPOINT_HOLDx1
+- **rules (no layover join)**: false positives GARAGE_PULLINx1, TERMINAL_LAYOVERx1, TIMEPOINT_HOLDx1
 
 ## Honest limits of this number
 

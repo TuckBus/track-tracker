@@ -32,8 +32,17 @@ GTFS-Realtime protobuf reader. Works on Windows without `tzdata`; run
 `python3 -m dispatch.cli doctor` to see which timezone it resolved.
 
 ```bash
+python3 -m dispatch.cli verify       # rebuild, test, re-derive every number below
 python3 -m dispatch.cli demo         # everything: world, eval, dashboard
 ```
+
+`verify` exists because "it works on my machine" is not evidence. It rebuilds
+the world from a fixed seed, runs the tests, and re-derives every figure in
+this README, EVAL.md and PREDICTIONS.md. Anyone who clones this gets the same
+output, and it exits non-zero if a published claim no longer holds.
+
+[DEMO.md](DEMO.md) has the two-minute walkthrough, the questions we expect, and
+what to do when the wifi dies.
 
 That one command builds a labelled world, scores the triage arms, and opens the
 dashboard on `http://localhost:8000`. The individual steps, if you want them:
@@ -56,10 +65,77 @@ every result says which. **Trips** lists each leg with the drafted messages that
 are held for approval. **Evidence** carries the arms table and what the four
 decisions mean.
 
-**Map** draws every tracked route and live vehicle position, with a pulse on
-routes carrying an active disruption. It renders from coordinates rather than
-map tiles, so there is no API key, no tile server and no attribution burden, and
-it still draws when the venue wifi is gone.
+**Stops** is the arrivals board every transit app has, with one difference.
+Dispatch predicts from where each vehicle actually is and how fast it is
+actually moving -- projected onto the route's real shape -- rather than from the
+timetable, because a timetable stops being true the moment anything goes wrong.
+When it cannot predict, it says why ("not moving", "just appeared") instead of
+showing a confident wrong number.
+
+Two predictors, scored against each other on the same recording. `speed`
+extrapolates a vehicle's current speed across the whole remaining trip;
+`segment` splits each route into 400m bins, learns each bin's typical speed
+from vehicles that have already driven it, and integrates:
+
+| arm | median error | p90 | within 2 min |
+|-----|--------------|-----|--------------|
+| constant speed | 56 s | 359 s | 66% |
+| learned segments | **15 s** | **105 s** | **90%** |
+
+The segment model had to earn that. Scored the first time it showed *no*
+benefit, which turned out to be a flaw in the fixture rather than the model:
+every simulated vehicle moved at one nominal speed along its whole route, so
+there was no spatial variation to learn and the evaluation could not have
+detected any. Adding per-location speed profiles to the simulator made the
+phenomenon exist, and the win appeared. A test now guards that, and fails if
+the fixture ever loses its profiles, because an evaluation that cannot fail is
+not measuring anything.
+
+It also refuses past a twenty-minute horizon, which is a measured choice and
+not a taste: that cutoff takes p90 error down by about a third for roughly five
+points of extra refusals. The full sweep is in PREDICTIONS.md.
+
+```bash
+python3 -m dispatch.cli predict-eval --arms --horizon-sweep
+```
+
+A 115x degradation. Speed-based arrival prediction is excellent on a moving bus
+and useless on a broken one, which is precisely the moment a rider needs to
+know something. **That gap is the argument for Dispatch's architecture**:
+disruption detection has to be a separate deterministic system, because you
+cannot infer a breakdown from an ETA that is quietly falling apart.
+
+The disrupted figure is also optimistic, and PREDICTIONS.md says so. A bus that
+breaks down and never moves again never reaches the stop, so its predictions
+are unmatched rather than scored; the 24.9 minutes comes from the subset that
+eventually recovered.
+
+**Map** shows the whole PRT system on a real basemap: every bus and light rail
+vehicle the agency is currently reporting, filterable by route, with each
+route's actual shape drawn when you select it. Two commands:
+
+```bash
+python3 -m dispatch.cli gtfs          # PRT's static feed: names, colours, shapes
+python3 -m dispatch.cli serve --live  # poll the real feed, map everything
+```
+
+`gtfs` is optional but worth it. The realtime feed carries a route id and a
+coordinate and nothing else, so without the static feed the map can draw
+vehicles but not the lines they run on, and routes show as bare ids instead of
+"61C McKeesport - Homestead". Shapes are thinned to about 120 points per route,
+which is invisible at city zoom and keeps a whole-system payload small enough
+for a browser.
+
+Tiles come from OpenStreetMap via Leaflet, which needs a network. If the CDN or
+the tile server is unreachable the map falls back to drawing the same vehicles
+and shapes from coordinates and says so, so a dead venue wifi costs you the
+basemap rather than the feature. Without `--live` the map shows the replayed
+corridor instead, which is what makes it work offline at all.
+
+When a vehicle is out of action, the event panel shows **the next vehicle on
+that route** behind it, from the predictor. Detection knows which bus died and
+where; prediction knows what is following. Neither is much use alone, and that
+join is the product.
 
 Open any leg or event and every field shows the document and paragraph it was
 read from; click one and the source opens with the supporting characters
@@ -78,9 +154,23 @@ highlighted. Three more things are worth knowing:
   surface says what would have had to be different. Suppression is the hard
   half of this product, so it should be legible rather than silent.
 
+In live mode, PRT's own service advisories appear on Now, clearly marked as the
+agency's notices rather than Dispatch's conclusions -- they are the yardstick
+lead time is measured against and are never fed into detection.
+
 Routes can be followed, which pins them to Now. Events and trips have deep
-links, so a URL opens straight to one. Works down to phone width, follows the
-system light/dark setting, and is keyboard navigable.
+links, so a URL opens straight to one. The tab title carries the status, so a
+pinned background tab shows when something needs you. `1`-`5` jump between
+sections, `Cmd/Ctrl-K` searches, `?` lists the shortcuts. Works down to phone
+width, follows the system light/dark setting, announces status changes to screen
+readers, and respects reduced-motion.
+
+The view only re-renders when something it depends on has actually changed,
+compared on a cheap signature. The earlier version redrew everything twice a
+second, which flickered, stole focus from whatever you were typing, and -- once
+the map arrived -- rebuilt several hundred map markers per tick. Vehicle markers
+are now moved rather than recreated, so a popup you are reading stays open while
+the bus behind it keeps moving.
 
 `fixtures` writes real GTFS-Realtime protobuf, byte-compatible with
 `truetime.portauthority.org`, and a `truth.json` the pipeline never reads.
@@ -389,7 +479,10 @@ tools/
   mock_prt.py       serves a world as PRT, to test the recorder offline
   mock_nemotron.py  OpenAI-compatible mock, to test the model client offline
   timeutil.py      portable timezone and clock formatting
-tests/              50 tests, 11 of them regressions for bugs listed above
+  predict.py       arrival prediction from geometry and observed speed
+  evaluate_predictions.py  scores those ETAs against observed arrivals
+tests/              61 tests, 11 of them regressions for bugs listed above
+DEMO.md             two-minute script, expected questions, failure fallbacks
 ```
 
 ## Attribution

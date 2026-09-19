@@ -157,6 +157,8 @@ class Session:
                 prev = snap.epoch
                 with self.lock:
                     pipe.observe(snap.observations, snap.alerts, snap.epoch)
+                    if PRED is not None:
+                        PRED.observe(snap.observations, snap.epoch)
                     self.clock = snap.epoch
                     self.progress = (i + 1, len(snapshots))
             with self.lock:
@@ -164,6 +166,29 @@ class Session:
                 self.status = "complete"
 
         threading.Thread(target=worker, daemon=True).start()
+
+
+def replay_vehicles() -> dict:
+    """Map payload built from the replay, shaped exactly like live mode."""
+    from .simulate import build_routes
+
+    cat = catalog()
+    shapes = {r.route_id: [[s[1], s[2]] for s in r.stops] for r in build_routes()}
+    disrupted = {e["route"] for e in cat["events"]
+                 if e.get("act") in ("NOTIFY", "INTERVENE")}
+    routes = [{
+        "id": r["id"], "label": r["id"], "name": r["subtitle"], "color": "",
+        "mode": "bus", "shape": shapes.get(r["id"], []),
+        "vehicles": r["vehicles"], "disrupted": r["id"] in disrupted,
+    } for r in cat["routes"]]
+    vehicles = [{
+        "id": v["id"], "route": v["route"], "lat": v["lat"], "lon": v["lon"],
+        "status": v.get("stop") and "STOPPED_AT" or "", "stop": v.get("stop", ""),
+        "trip": "", "at": v.get("seen", 0), "mode": "bus",
+    } for v in cat["vehicles"]]
+    return {"mode": "replay", "updated_at": 0, "polls": 0, "error": "",
+            "vehicles": vehicles, "routes": routes, "alerts": [],
+            "gtfs": "replay geometry"}
 
 
 def catalog() -> dict:
@@ -304,6 +329,8 @@ def _load_fixture_docs() -> list[Document]:
 
 
 DEFAULT_WORLD = "fixtures/world"
+LIVE = None  # a live.LiveFeed when serve(--live) is on
+PRED = None  # a predict.Predictor, fed by whichever source is running
 
 SESSION = Session()
 
@@ -348,6 +375,32 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"arms": json.load(fh)})
             except (OSError, ValueError):
                 self._json({"arms": [], "note": "run: dispatch eval"})
+            return
+        if path == "/api/stops":
+            self._json({"stops": (PRED.all_stops() if PRED else [])})
+            return
+        if path.startswith("/api/arrivals"):
+            from urllib.parse import parse_qs as _q
+            qs = _q(urlparse(self.path).query)
+            stop = (qs.get("stop") or [""])[0]
+            # `exclude` drops a specific vehicle from the board. Used when one
+            # has broken down: the useful answer is not "no ETA" but "that one
+            # is stuck, here is the next one behind it".
+            skip = set(qs.get("exclude") or [])
+            if PRED is None or not stop:
+                self._json({"stop": stop, "arrivals": []})
+                return
+            rows = [a.to_dict() for a in PRED.arrivals(stop, limit=8)
+                    if a.vehicle_id not in skip]
+            self._json({"stop": stop, "arrivals": rows[:6]})
+            return
+        if path == "/api/vehicles":
+            # Whole-system live view when live mode is on; otherwise the
+            # replayed corridor, so the map works either way.
+            if LIVE is not None:
+                self._json(LIVE.payload())
+                return
+            self._json(replay_vehicles())
             return
         if path == "/api/catalog":
             self._json(catalog())
@@ -453,9 +506,35 @@ def serve(
     host: str = "127.0.0.1",
     db: str | None = None,
     open_browser: bool = False,
+    live: bool = False,
+    base: str | None = None,
 ) -> None:
-    global DEFAULT_WORLD
+    global DEFAULT_WORLD, LIVE, PRED
     DEFAULT_WORLD = world
+
+    # One predictor, fed by whichever source is running. Geometry comes from
+    # static GTFS if it is present, otherwise from the world's own feed.
+    from .predict import from_static_gtfs
+    import os as _os
+    gtfs = None
+    for cand in ("fixtures/prt-gtfs.zip", _os.path.join(world, "gtfs-static.zip")):
+        if _os.path.exists(cand):
+            gtfs = cand
+            break
+    PRED = from_static_gtfs(gtfs)
+    stops = len(PRED.all_stops())
+    print(f"predictions: {len(PRED.geo)} routes with geometry, {stops} stops"
+          + ("" if PRED.geo else " (run `dispatch gtfs` for real geometry)"))
+    if live:
+        from .live import LiveFeed
+        LIVE = LiveFeed(base=base, predictor=PRED)
+        LIVE.start()
+        p = LIVE.payload()
+        print(f"live mode: {len(p['vehicles'])} vehicles, "
+              f"{len(p['routes'])} routes")
+        print(f"  static GTFS: {p['gtfs']}")
+        if p["error"]:
+            print(f"  feed trouble: {p['error']}")
     httpd = ThreadingHTTPServer((host, port), Handler)
     print(f"Dispatch board: http://{host}:{port}")
     print(f"default world: {world}")

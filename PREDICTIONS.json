@@ -1,0 +1,55 @@
+{
+  "scored": 18640,
+  "unmatched": 6733,
+  "basis_counts": {
+    "insufficient_data": 2032,
+    "segment": 23612,
+    "speed": 1761,
+    "beyond_horizon": 1803,
+    "stalled": 3169
+  },
+  "rows": {
+    "all": {
+      "n": 18640,
+      "median_abs_s": 15,
+      "p90_abs_s": 77,
+      "mean_signed_s": -34,
+      "within_2min": 0.913
+    },
+    "under 5 min": {
+      "n": 13562,
+      "median_abs_s": 12,
+      "p90_abs_s": 30,
+      "mean_signed_s": -5,
+      "within_2min": 0.984
+    },
+    "normal operation": {
+      "n": 18544,
+      "median_abs_s": 15,
+      "p90_abs_s": 67,
+      "mean_signed_s": -27,
+      "within_2min": 0.917
+    },
+    "5 to 15 min": {
+      "n": 3890,
+      "median_abs_s": 28,
+      "p90_abs_s": 269,
+      "mean_signed_s": -34,
+      "within_2min": 0.789
+    },
+    "over 15 min": {
+      "n": 1188,
+      "median_abs_s": 120,
+      "p90_abs_s": 1238,
+      "mean_signed_s": -372,
+      "within_2min": 0.5
+    },
+    "disrupted vehicle": {
+      "n": 96,
+      "median_abs_s": 1418,
+      "p90_abs_s": 1742,
+      "mean_signed_s": -1458,
+      "within_2min": 0.0
+    }
+  }
+}

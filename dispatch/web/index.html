@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>Dispatch</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230B5CD5'/%3E%3Cpath d='M6 17h4l2.5-8 3.5 15 3-9 2 2h5' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 /* ===========================================================================
    Dispatch
@@ -58,6 +59,24 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 input{font:inherit}
 :focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:6px}
 .num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* keyboard help */
+.keys{position:fixed;inset:0;display:grid;place-items:center;z-index:60;
+  background:rgba(10,20,32,.45);backdrop-filter:blur(3px)}
+.keys[hidden]{display:none}
+.keys div{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px 24px;box-shadow:var(--shadow);min-width:300px}
+.keys h3{margin:0 0 12px;font-size:16px;font-weight:640}
+.keys dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0;font-size:13.5px}
+.keys dt{text-align:right}
+.keys kbd{font:inherit;font-size:11.5px;font-weight:600;border:1px solid var(--line);
+  border-bottom-width:2px;border-radius:5px;padding:2px 6px;background:var(--wash)}
+.keys dd{margin:0;color:var(--dim)}
+/* offline / feed trouble banner */
+.banner{border-radius:var(--r2);padding:10px 14px;margin-bottom:14px;font-size:13.5px;
+  background:var(--warnwash);color:var(--warn);display:flex;gap:9px;align-items:center}
+.banner.bad{background:var(--badwash);color:var(--bad)}
 
 /* --- shell --------------------------------------------------------------- */
 .app{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);min-height:100%}
@@ -224,6 +243,34 @@ mark.q{background:var(--warnwash);color:inherit;border-radius:3px;padding:0 1px}
   border:1px solid var(--line);border-radius:var(--r);background:var(--wash);
   overflow:hidden;position:relative;
 }
+#leaf{height:min(620px,68vh);width:100%;background:var(--wash)}
+.leaflet-container{font:inherit}
+@media (prefers-color-scheme:dark){
+  /* Tone the basemap down so vehicle dots stay the brightest thing on it. */
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.88) contrast(.9)}
+}
+.mapbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
+.mapbar .searchbar{flex:1;min-width:210px;padding:9px 13px;box-shadow:none}
+.mapbar .searchbar input{font-size:14.5px}
+.livedot{width:8px;height:8px;border-radius:99px;background:var(--ok);flex:none}
+.livedot.stale{background:var(--warn)}
+.routescroll{max-height:250px;overflow-y:auto;border:1px solid var(--line);
+  border-radius:var(--r);background:var(--raise);margin-top:11px}
+.rrow{display:flex;align-items:center;gap:11px;padding:9px 13px;width:100%;
+  text-align:left;border-bottom:1px solid var(--line2)}
+.rrow:last-child{border-bottom:0}
+.rrow:hover{background:var(--wash)}
+.rrow[aria-pressed=true]{background:var(--bluewash)}
+.rswatch{width:11px;height:11px;border-radius:3px;flex:none}
+.vpop b{display:block;font-size:14px;margin-bottom:3px}
+.eta{font-variant-numeric:tabular-nums;font-weight:660;font-size:17px;
+  letter-spacing:-.02em;min-width:74px;text-align:right}
+.eta small{display:block;font-size:11px;font-weight:500;color:var(--faint);
+  letter-spacing:0}
+.eta.soon{color:var(--ok)} .eta.none{color:var(--faint);font-size:13px;font-weight:560}
+.conf{height:3px;border-radius:99px;background:var(--line2);width:46px;overflow:hidden}
+.conf div{height:100%;background:var(--blue)}
+.vpop small{color:#5D6B7C}
 .mapwrap svg{display:block;width:100%;height:auto}
 .mline{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
 .mstop{fill:var(--bg);stroke-width:2}
@@ -307,6 +354,11 @@ td.na{color:var(--faint);text-align:left}
         stroke-linecap="round"><path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2z"/>
         <path d="M9 3v16M15 5v16"/></svg>
       Map<span class="n" id="n-map"></span></button>
+    <button class="nav" data-v="stops">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><circle cx="12" cy="10" r="3"/>
+        <path d="M12 21s6.5-6.1 6.5-11a6.5 6.5 0 1 0-13 0C5.5 14.9 12 21 12 21z"/></svg>
+      Stops<span class="n" id="n-stops"></span></button>
     <button class="nav" data-v="trips">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
         stroke-linecap="round"><rect x="4" y="3" width="16" height="15" rx="3"/>
@@ -322,6 +374,20 @@ td.na{color:var(--faint);text-align:left}
     </div>
   </nav>
   <main id="main"></main>
+</div>
+<div class="sr" id="announce" aria-live="polite" role="status"></div>
+<div class="keys" id="keys" hidden>
+  <div role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <h3>Keyboard</h3>
+    <dl>
+      <dt><kbd>⌘K</kbd></dt><dd>Search anything</dd>
+      <dt><kbd>1</kbd>–<kbd>6</kbd></dt><dd>Jump to a section</dd>
+      <dt><kbd>↑</kbd><kbd>↓</kbd></dt><dd>Move through results</dd>
+      <dt><kbd>↵</kbd></dt><dd>Open the selected result</dd>
+      <dt><kbd>esc</kbd></dt><dd>Close, or clear the search</dd>
+      <dt><kbd>?</kbd></dt><dd>This list</dd>
+    </dl>
+  </div>
 </div>
 <div class="scrim" id="scrim"></div>
 <aside class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="sheettitle">
@@ -359,7 +425,27 @@ function nice(label){
 let ST=null, CAT=null, VIEW="now", Q="", MODE="all", SEL=0, POLL=null, DOCS={};
 /* Upload result lives in state, not in the DOM. The view re-renders on every
    poll, so anything written straight into the page gets wiped a moment later. */
-let UPLOAD=null;
+let UPLOAD=null, LASTSIG="", LASTTITLE="", MARKERS=new Map();
+
+/* Only re-render when something the current view actually depends on has
+   changed.
+   The poller used to redraw everything twice a second, which made text flicker,
+   stole focus from whatever you were typing in, and -- once the map arrived --
+   rebuilt several hundred Leaflet markers on every tick. Diffing on a cheap
+   signature turns all of that into a no-op when nothing moved. */
+function signature(){
+  const st=ST||{}, mp=MAPDATA||{}, ct=CAT||{}, pr=st.progress||{};
+  return [
+    VIEW, Q, MODE, MQ, MONLYBAD, [...MSEL].sort().join(","),
+    [...FOLLOW].sort().join(","), st.status, pr.done, st.backend, st.clock,
+    (st.findings||[]).length, (st.drafts||[]).length, (st.itinerary||[]).length,
+    (ct.legs||[]).length, (mp.vehicles||[]).length, (mp.routes||[]).length,
+    (mp.alerts||[]).length, mp.updated_at, mp.error,
+    UPLOAD ? (UPLOAD.busy||UPLOAD.error||UPLOAD.document?.source_id||"u") : "",
+    STOPQ, ARRSTOP, (STOPS||[]).length,
+    ARRIVALS ? ARRIVALS.map(a=>a.eta_s).join(",") : "pending",
+  ].join("\u0001");
+}
 let FOLLOW = new Set();
 try{ FOLLOW = new Set(JSON.parse(localStorage.getItem("dispatch.follow")||"[]")); }catch(e){}
 const saveFollow = () => { try{
@@ -427,6 +513,12 @@ function viewNow(){
   const p = ST?.progress||{done:0,total:0};
 
   let h = `<h1>Now</h1><p class="sub">Live picture of your trips and the network.</p>`;
+  if(OFFLINE)
+    h += `<div class="banner bad">The Dispatch server is not responding. Nothing
+      shown below is current.</div>`;
+  else if(MAPDATA?.error)
+    h += `<div class="banner">Trouble reading a feed: ${esc(MAPDATA.error)}.
+      The last good snapshot is still shown.</div>`;
   h += answer();
   if(ST?.status==="running")
     h += `<div class="prog"><div style="width:${p.total?100*p.done/p.total:0}%"></div></div>`;
@@ -442,6 +534,22 @@ function viewNow(){
         <span class="tag ${bad?"t-NOTIFY":"t-SUPPRESS"}">${bad?"disrupted":"normal"}</span>
         ${chev}</button>`;
     }).join("") + `</div>`;
+  }
+
+  const adv = (MAPDATA?.alerts)||[];
+  if(adv.length){
+    h += `<h2>Agency advisories <em>published by PRT</em></h2>
+      <div class="list">` + adv.slice(0,6).map(a=>`
+      <div class="item">
+        <span class="bullet bus">${esc((a.routes&&a.routes[0])||"—")}</span>
+        <span class="body"><b style="white-space:normal">${esc(a.header||"Service advisory")}</b>
+          <small>${esc((a.effect||"").toLowerCase().replace(/_/g," "))}${
+            a.routes&&a.routes.length>1?` · ${a.routes.length} routes`:""}</small></span>
+        <time>${a.published_at?hhmm(a.published_at):""}</time>
+      </div>`).join("") + `</div>
+      <p class="sub" style="margin-top:8px">These are the agency's own notices.
+      Dispatch never uses them as input -- they are the yardstick its lead time
+      is measured against.</p>`;
   }
 
   h += `<h2>Activity</h2>`;
@@ -551,79 +659,277 @@ function colorFor(id){
    the venue wifi has gone. The projection is a plain equirectangular fit to the
    bounding box of the routes, with the x axis scaled by cos(latitude) so shapes
    are not stretched -- at city scale that is indistinguishable from Mercator. */
-function viewMap(){
-  const routes = (CAT?.routes||[]).filter(r => (r.coords||[]).length > 1);
-  if(!routes.length) return `<h1>Map</h1><p class="sub">Live vehicle positions.</p>
-    <div class="empty"><b>No geometry loaded</b>Start a replay to see vehicles.</div>`;
+let MAPDATA=null, MAP=null, MLAYER=null, MLINES=null, MQ="", MSEL=new Set(),
+    MONLYBAD=false, LEAFLET=null;
 
-  const pts = routes.flatMap(r=>r.coords);
-  const lats = pts.map(p=>p[0]), lons = pts.map(p=>p[1]);
-  let la0=Math.min(...lats), la1=Math.max(...lats);
-  let lo0=Math.min(...lons), lo1=Math.max(...lons);
-  const padLa=(la1-la0)*0.10||0.01, padLo=(lo1-lo0)*0.10||0.01;
-  la0-=padLa; la1+=padLa; lo0-=padLo; lo1+=padLo;
-  const W=1000, k=Math.cos((la0+la1)/2*Math.PI/180);
-  const H=Math.max(360, Math.min(820, W*(la1-la0)/((lo1-lo0)*k)));
-  const X=lon=>(lon-lo0)/(lo1-lo0)*W;
-  const Y=lat=>(la1-lat)/(la1-la0)*H;
-
-  const troubled = new Set(((ST?.findings)||[])
-    .filter(f=>["NOTIFY","INTERVENE"].includes(f.verdict.act))
-    .map(f=>f.signal.route_id));
-
-  let g = "";
-  for(const r of routes){
-    const c = colorFor(r.id);
-    const d = r.coords.map((p,i)=>`${i?"L":"M"}${X(p[1]).toFixed(1)} ${Y(p[0]).toFixed(1)}`).join("");
-    g += `<path class="mline" d="${d}" stroke="${c}"/>`;
-    g += r.coords.map(p=>
-      `<circle class="mstop" cx="${X(p[1]).toFixed(1)}" cy="${Y(p[0]).toFixed(1)}"
-        r="3.4" stroke="${c}"/>`).join("");
-    const end = r.coords[r.coords.length-1];
-    g += `<text class="mlabel" x="${(X(end[1])+9).toFixed(1)}"
-      y="${(Y(end[0])+4).toFixed(1)}">${esc(r.id)}</text>`;
-  }
-  const vehs = (CAT?.vehicles||[]).filter(v=>v.lat!=null&&v.lon!=null);
-  for(const v of vehs){
-    const c = colorFor(v.route), x=X(v.lon).toFixed(1), y=Y(v.lat).toFixed(1);
-    if(troubled.has(v.route))
-      g += `<circle class="mpulse" cx="${x}" cy="${y}" r="7" stroke="${c}"/>`;
-    g += `<circle class="mveh" cx="${x}" cy="${y}" r="6.5" fill="${c}"
-      data-open="vehicle:${esc(v.id)}"><title>${esc(v.id)} · ${esc(v.subtitle)}</title></circle>`;
-  }
-
-  return `<h1>Map</h1><p class="sub">${vehs.length} vehicles on ${routes.length}
-    routes, straight from the agency feed. Tap one for its position and status.</p>
-    <div class="mapwrap"><svg viewBox="0 0 ${W} ${H.toFixed(0)}"
-      role="img" aria-label="Map of tracked routes and vehicle positions">
-      ${g}</svg></div>
-    <div class="maplegend">${routes.map(r=>
-      `<span><i style="background:${colorFor(r.id)}"></i>${esc(r.id)}${
-        troubled.has(r.id)?" · disrupted":""}</span>`).join("")}</div>
-    <p class="sub" style="margin-top:14px">Positions are drawn from coordinates,
-    not map tiles, so this works with no network and no API key. Nothing is
-    smoothed or interpolated.</p>`;
+/* Leaflet from a CDN, with the coordinate map as a fallback.
+   A real basemap needs tiles, and tiles need a network. Rather than make the
+   whole map depend on the venue wifi, try to load Leaflet and fall back to
+   drawing from coordinates if it does not arrive. Both paths render the same
+   data; only the background differs. */
+function loadLeaflet(){
+  if(LEAFLET) return LEAFLET;
+  LEAFLET = new Promise(resolve => {
+    if(window.L) return resolve(window.L);
+    const css=document.createElement("link");
+    css.rel="stylesheet";
+    css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(css);
+    const js=document.createElement("script");
+    js.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    js.onload=()=>resolve(window.L||null);
+    js.onerror=()=>resolve(null);
+    document.head.appendChild(js);
+    setTimeout(()=>resolve(window.L||null), 6000);
+  });
+  return LEAFLET;
 }
 
-function uploadPanel(){
-  if(!UPLOAD) return "";
-  if(UPLOAD.busy) return `<div class="empty" style="padding:16px">reading ${
-    esc(UPLOAD.busy)}…</div>`;
-  if(UPLOAD.error) return `<div class="empty"><b>${esc(UPLOAD.error)}</b>
-    Supported: .eml .txt .ics .csv .html .pdf</div>`;
-  const r = UPLOAD;
-  return `<div class="list" style="margin-top:10px">
-    <div class="item"><span class="bullet document">${ICON.document}</span>
-      <span class="body"><b>${esc(r.document.source_id)}</b>
-        <small>${esc(r.document.source_type)} · ${r.document.chars} characters ·
-        ${r.found} leg${r.found===1?"":"s"} found, ${r.added} new</small></span>
-      <span class="tag t-LOG">parsed</span></div>
-    ${r.legs.map(l=>`<button class="item" data-open="leg:${esc(l.item_id)}">
-      <span class="bullet ${l.kind==="rail"?"train":l.kind==="flight"?"flight":"bus"}">${
-        esc(l.route_hint||"—")}</span>
-      <span class="body"><b>${esc(nice(l.label))}</b>
-        <small>read from ${esc(r.document.source_id)}</small></span>
-      ${chev}</button>`).join("")}</div>`;
+const modeColor = {bus:"#0B5CD5","light rail":"#0E7C5A",rail:"#0E7C5A",
+                   incline:"#8A5200",subway:"#6B3FD4"};
+function routeColor(r){
+  if(r && r.color) return r.color;
+  return modeColor[r && r.mode] || "#0B5CD5";
+}
+
+function visibleRoutes(){
+  const rs = MAPDATA?.routes||[];
+  const q = MQ.trim().toLowerCase();
+  return rs.filter(r =>
+    (!MONLYBAD || r.disrupted) &&
+    (!q || r.label.toLowerCase().includes(q) ||
+      (r.name||"").toLowerCase().includes(q) || r.id.toLowerCase().includes(q)));
+}
+
+function viewMap(){
+  const d = MAPDATA;
+  if(!d) return `<h1>Map</h1><p class="sub">Live vehicle positions.</p>
+    <div class="empty">loading the network…</div>`;
+  const rs = visibleRoutes();
+  const ids = new Set(rs.map(r=>r.id));
+  const vehs = (d.vehicles||[]).filter(v=>ids.has(v.route));
+  const age = d.updated_at ? Math.round(Date.now()/1000 - d.updated_at) : null;
+  const stale = age!=null && age > 90;
+
+  return `<h1>Map</h1>
+  <p class="sub">${d.mode==="live"
+    ? `${(d.vehicles||[]).length} vehicles across ${(d.routes||[]).length} routes,
+       polled straight from Pittsburgh Regional Transit.`
+    : `Replayed corridor. Start the server with <code>--live</code> to map the
+       whole PRT system.`}</p>
+  <div class="mapbar">
+    <div class="searchbar">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--faint)"
+        stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/>
+        <path d="m16 16 4.5 4.5"/></svg>
+      <input id="mq" value="${esc(MQ)}" placeholder="Filter routes: 61C, airport, East Busway…"
+        autocomplete="off" aria-label="Filter routes">
+    </div>
+    <button class="chip" id="onlybad" aria-pressed="${MONLYBAD}">Disrupted only</button>
+    ${MSEL.size?`<button class="chip" id="clearsel">Clear ${MSEL.size} selected</button>`:""}
+    ${d.mode==="live"?`<span class="chip" style="border:0"><i class="livedot ${
+      stale?"stale":""}"></i>${age==null?"—":stale?`${age}s ago`:"live"}</span>`:""}
+  </div>
+  <div class="mapwrap"><div id="leaf"></div></div>
+  <div class="maplegend">
+    <span>${vehs.length} vehicles shown</span>
+    <span>${rs.length} of ${(d.routes||[]).length} routes</span>
+    ${d.error?`<span style="color:var(--bad)">feed: ${esc(d.error)}</span>`:""}
+    <span>${esc(d.gtfs||"")}</span>
+  </div>
+  <h2>Routes</h2>
+  <div class="routescroll">${rs.slice(0,140).map(r=>`
+    <button class="rrow" data-route="${esc(r.id)}" aria-pressed="${MSEL.has(r.id)}">
+      <span class="rswatch" style="background:${routeColor(r)}"></span>
+      <span class="bullet" style="background:${routeColor(r)};color:#fff">${
+        esc(r.label)}</span>
+      <span class="body"><b>${esc(r.name||r.mode)}</b>
+        <small>${r.vehicles} vehicle${r.vehicles===1?"":"s"}${
+          r.shape&&r.shape.length?"":" · no geometry"}</small></span>
+      ${r.disrupted?`<span class="tag t-NOTIFY">disrupted</span>`:""}
+    </button>`).join("")||`<div class="empty" style="border:0">No routes match.</div>`}
+  </div>
+  <p class="sub" style="margin-top:14px">Tap a route to draw its line. Vehicle
+  positions are exactly what the agency reports, unsmoothed.</p>`;
+}
+
+/* Draw onto the real map if Leaflet made it, otherwise the coordinate map. */
+async function paintMap(){
+  const host = $("#leaf"); if(!host || !MAPDATA) return;
+  const rs = visibleRoutes(), ids = new Set(rs.map(r=>r.id));
+  const vehs = (MAPDATA.vehicles||[]).filter(v=>ids.has(v.route));
+  const L = await loadLeaflet();
+
+  if(!L){ host.outerHTML = svgMap(rs, vehs); return; }
+  if(!MAP || !document.body.contains(MAP.getContainer())){
+    MAP = L.map(host, {preferCanvas:true, zoomControl:true,
+                       attributionControl:true}).setView([40.4406,-79.9959], 12);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {maxZoom:18, attribution:"&copy; OpenStreetMap contributors"}).addTo(MAP);
+    MLAYER = L.layerGroup().addTo(MAP);
+    MLINES = L.layerGroup().addTo(MAP);
+  }
+  MLINES.clearLayers();
+
+  // Lines only for selected routes, or for a narrow filter. Drawing a hundred
+  // overlapping shapes at once is unreadable.
+  const drawLines = rs.filter(r =>
+    (MSEL.size ? MSEL.has(r.id) : rs.length <= 6) && r.shape && r.shape.length>1);
+  for(const r of drawLines)
+    L.polyline(r.shape, {color:routeColor(r), weight:4, opacity:.8}).addTo(MLINES);
+
+  // Move the markers that already exist rather than rebuilding them all.
+  // With ~700 live vehicles, clearing and re-adding the layer every poll
+  // drops frames and closes any popup the user had open mid-read.
+  const byId = Object.fromEntries((MAPDATA.routes||[]).map(r=>[r.id,r]));
+  const alive = new Set();
+  for(const v of vehs){
+    const r = byId[v.route]||{};
+    alive.add(v.id);
+    const popup = `<div class="vpop"><b>${esc(r.label||v.route)} · ${esc(v.id)}</b>
+      <small>${esc(r.name||"")}</small>
+      <small>${esc(v.status||"in service")}${v.stop?" · "+esc(v.stop):""}</small>
+      </div>`;
+    const existing = MARKERS.get(v.id);
+    if(existing){
+      existing.setLatLng([v.lat,v.lon]);
+      existing.setStyle({fillColor:routeColor(r),
+        radius: MSEL.size && MSEL.has(v.route) ? 7 : 5});
+      existing.setPopupContent(popup);
+      continue;
+    }
+    const mk = L.circleMarker([v.lat,v.lon], {
+      radius: MSEL.size && MSEL.has(v.route) ? 7 : 5,
+      color:"#fff", weight:1.5, fillColor:routeColor(r), fillOpacity:.95,
+    }).bindPopup(popup);
+    mk.addTo(MLAYER); MARKERS.set(v.id, mk);
+  }
+  for(const [id, mk] of [...MARKERS]){
+    if(!alive.has(id)){ MLAYER.removeLayer(mk); MARKERS.delete(id); }
+  }
+
+  const pts = vehs.map(v=>[v.lat,v.lon])
+    .concat(drawLines.flatMap(r=>r.shape));
+  if(pts.length && (MSEL.size || MQ.trim()))
+    MAP.fitBounds(L.latLngBounds(pts).pad(0.12), {animate:false});
+}
+
+/* The offline path: same data, drawn from coordinates. */
+function svgMap(rs, vehs){
+  const pts = rs.flatMap(r=>r.shape&&r.shape.length?r.shape:[])
+    .concat(vehs.map(v=>[v.lat,v.lon]));
+  if(pts.length < 2) return `<div class="empty" style="border:0">
+    No geometry to draw.</div>`;
+  const lats=pts.map(p=>p[0]), lons=pts.map(p=>p[1]);
+  let la0=Math.min(...lats), la1=Math.max(...lats);
+  let lo0=Math.min(...lons), lo1=Math.max(...lons);
+  const pa=(la1-la0)*.1||.01, po=(lo1-lo0)*.1||.01;
+  la0-=pa; la1+=pa; lo0-=po; lo1+=po;
+  const W=1000, k=Math.cos((la0+la1)/2*Math.PI/180);
+  const H=Math.max(340, Math.min(700, W*(la1-la0)/((lo1-lo0)*k)));
+  const X=l=>((l-lo0)/(lo1-lo0)*W).toFixed(1), Y=l=>((la1-l)/(la1-la0)*H).toFixed(1);
+  let g="";
+  for(const r of rs){
+    if(!r.shape||r.shape.length<2) continue;
+    g += `<path class="mline" stroke="${routeColor(r)}" d="${
+      r.shape.map((p,i)=>`${i?"L":"M"}${X(p[1])} ${Y(p[0])}`).join("")}"/>`;
+  }
+  const byId=Object.fromEntries(rs.map(r=>[r.id,r]));
+  for(const v of vehs)
+    g += `<circle class="mveh" cx="${X(v.lon)}" cy="${Y(v.lat)}" r="5.5"
+      fill="${routeColor(byId[v.route]||{})}"><title>${esc(v.route)} ${
+      esc(v.id)}</title></circle>`;
+  return `<svg viewBox="0 0 ${W} ${H.toFixed(0)}" role="img"
+    aria-label="Map of routes and vehicle positions">${g}</svg>
+    <div style="padding:9px 13px;font-size:12px;color:var(--dim);
+      border-top:1px solid var(--line)">Basemap unavailable, so this is drawn
+      from coordinates. Positions are unaffected.</div>`;
+}
+
+let STOPS=null, STOPQ="", ARRIVALS=null, ARRSTOP="";
+
+async function loadStops(){
+  try{ STOPS = (await (await fetch("/api/stops")).json()).stops||[]; }
+  catch(e){ STOPS = []; }
+}
+async function loadArrivals(stop){
+  ARRSTOP = stop; ARRIVALS = null; render(true);
+  try{
+    ARRIVALS = (await (await fetch(
+      "/api/arrivals?stop="+encodeURIComponent(stop))).json()).arrivals||[];
+  }catch(e){ ARRIVALS = []; }
+  render(true);
+}
+
+/* The board every transit app has, with one difference: when Dispatch cannot
+   predict, it says which of its own conditions stopped it rather than showing
+   a confident wrong number. */
+function etaCell(a){
+  if(a.eta_s == null){
+    const why = {stalled:"not moving", insufficient_data:"just appeared",
+                 off_route:"off route",
+                 beyond_horizon:"over 20 min"}[a.basis] || a.basis;
+    return `<span class="eta none">${esc(why)}</span>`;
+  }
+  const m = Math.round(a.eta_s/60);
+  return `<span class="eta ${m<=3?"soon":""}">${m<1?"due":m+" min"}
+    <small>${(a.distance_m/1000).toFixed(1)} km</small></span>`;
+}
+
+function viewStops(){
+  let h = `<h1>Stops</h1><p class="sub">Predicted arrivals, worked out from where
+    each vehicle actually is and how fast it is actually moving. No timetable
+    involved.</p>`;
+  if(!STOPS) return h + `<div class="empty">loading stops…</div>`;
+  if(!STOPS.length) return h + `<div class="empty"><b>No stop geometry</b>
+    Run <code>python3 -m dispatch.cli gtfs</code> for the real PRT network, or
+    <code>python3 -m dispatch.cli fixtures</code> for the demo world.</div>`;
+
+  if(ARRSTOP){
+    const rows = ARRIVALS;
+    h += `<button class="btn" data-stopback>Back to all stops</button>
+      <h2 style="margin-top:18px">${esc(ARRSTOP)}</h2>`;
+    h += rows === null ? `<div class="empty">working out arrivals…</div>`
+      : rows.length ? `<div class="list">` + rows.map(a=>`
+        <div class="item">
+          <span class="bullet bus">${esc(a.route)}</span>
+          <span class="body"><b>${esc(a.vehicle)}</b>
+            <small>${esc(
+              a.basis==="segment" ? `${(a.speed_mps*3.6).toFixed(0)} km/h now, `
+                + `adjusted for this route's usual speeds`
+              : a.basis==="speed" ? `moving at ${(a.speed_mps*3.6).toFixed(0)} km/h`
+              : a.basis==="beyond_horizon" ? "too far out to predict"
+              : "no speed estimate")}</small></span>
+          <span class="conf" title="confidence ${a.confidence}">
+            <div style="width:${Math.round(a.confidence*100)}%"></div></span>
+          ${etaCell(a)}
+        </div>`).join("") + `</div>
+        <p class="sub" style="margin-top:10px">The bar is confidence, which
+        falls with distance and rises with how long we have been watching that
+        vehicle.</p>`
+      : `<div class="empty">Nothing inbound to this stop right now.</div>`;
+    return h;
+  }
+
+  const q = STOPQ.trim().toLowerCase();
+  const list = STOPS.filter(s => !q || s.stop_id.toLowerCase().includes(q)
+    || s.routes.some(r=>r.toLowerCase().includes(q)));
+  h += `<div class="searchbar" style="box-shadow:none">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--faint)"
+      stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/>
+      <path d="m16 16 4.5 4.5"/></svg>
+    <input id="sq" value="${esc(STOPQ)}" placeholder="Find a stop or a route…"
+      autocomplete="off" aria-label="Find a stop"></div>`;
+  h += `<div class="list" style="margin-top:12px">` + list.slice(0,120).map(s=>`
+    <button class="item" data-stop="${esc(s.stop_id)}">
+      <span class="bullet event">${ICON.event}</span>
+      <span class="body"><b>${esc(s.stop_id)}</b>
+        <small>${s.routes.map(esc).join(", ")}</small></span>${chev}</button>`
+    ).join("") + `</div>`;
+  if(list.length > 120)
+    h += `<p class="sub" style="margin-top:10px">Showing 120 of ${list.length}.
+      Narrow it with the search box.</p>`;
+  return h;
 }
 
 function viewTrips(){
@@ -767,6 +1073,12 @@ function openEvent(sigId){
     h += `<div id="paper"></div>`;
   }
   h += whyNot(f);
+  // When a vehicle is out of action, the number a rider actually wants is the
+  // next one behind it. Detection knows which bus died and where; prediction
+  // knows what is following. Neither is useful alone.
+  if(["NOTIFY","INTERVENE"].includes(v.act) && ev.stop_id)
+    h += `<div id="relief" class="whynot"><b>Next vehicle on this route</b>
+      working it out…</div>`;
   if(v.request_json || v.response_raw){
     h += `<details class="audit"><summary>Audit trail: what the triage stage
       saw and said</summary>
@@ -775,6 +1087,8 @@ function openEvent(sigId){
   }
   openSheet(`${esc(f.signal.kind)} on ${esc(f.signal.route_id)}`, h);
   window.__prov = prov;
+  if(["NOTIFY","INTERVENE"].includes(v.act) && ev.stop_id)
+    loadRelief(ev.stop_id, f.signal.vehicle_id);
 }
 /* For anything Dispatch chose not to tell you about, say what would have had
    to be different. Suppression is the hard half of this product, so it should
@@ -864,6 +1178,30 @@ function openDoc(id){
   window.__prov = [{source_id:id, char_start:null, char_end:null}];
   showPaper(0);
 }
+async function loadRelief(stop, excludeVehicle){
+  const box = $("#relief"); if(!box) return;
+  let rows = [];
+  try{
+    rows = (await (await fetch(`/api/arrivals?stop=${encodeURIComponent(stop)}`
+      + `&exclude=${encodeURIComponent(excludeVehicle)}`)).json()).arrivals||[];
+  }catch(e){}
+  const usable = rows.filter(r => r.eta_s != null);
+  if(!usable.length){
+    box.innerHTML = `<b>Next vehicle on this route</b>Nothing else is inbound to
+      ${esc(stop)} that we can predict, so there is no relief behind this one.`;
+    return;
+  }
+  box.innerHTML = `<b>Next vehicle on this route</b>` + usable.slice(0,3).map(r=>{
+    const m = Math.round(r.eta_s/60);
+    return `<div style="display:flex;gap:10px;align-items:baseline;margin-top:5px">
+      <span class="bullet bus">${esc(r.route)}</span>
+      <span style="color:var(--text)">${esc(r.vehicle)}</span>
+      <span style="margin-left:auto;font-weight:660" class="num">${
+        m<1?"due":m+" min"}</span></div>`;
+  }).join("") + `<div style="margin-top:7px;font-size:12.5px">Predicted at ${
+    esc(stop)}, excluding the vehicle above.</div>`;
+}
+
 async function showPaper(i){
   const p = (window.__prov||[])[i]; if(!p) return;
   const box = $("#paper"); if(!box) return;
@@ -894,11 +1232,15 @@ async function showPaper(i){
 }
 
 /* --- render + events ------------------------------------------------------ */
-async function render(){
+async function render(force){
+  const sig = signature();
+  if(!force && sig === LASTSIG) return;
+  LASTSIG = sig;
   const m = $("#main");
   m.innerHTML = VIEW==="now" ? viewNow()
     : VIEW==="search" ? viewSearch()
     : VIEW==="map" ? viewMap()
+    : VIEW==="stops" ? viewStops()
     : VIEW==="trips" ? viewTrips()
     : `<div class="empty">loading…</div>`;
   if(VIEW==="evidence") m.innerHTML = await viewEvidence();
@@ -906,8 +1248,38 @@ async function render(){
     b.dataset.v===VIEW ? "page" : "false"));
   $("#n-now").textContent = (ST?.findings||[]).length || "";
   $("#n-trips").textContent = (CAT?.legs||[]).length || "";
-  $("#n-map").textContent = (CAT?.vehicles||[]).length || "";
+  $("#n-map").textContent = (MAPDATA?.vehicles||CAT?.vehicles||[]).length || "";
+  $("#n-stops").textContent = (STOPS||[]).length || "";
+  if(VIEW==="stops"){
+    if(!STOPS) loadStops().then(()=>render(true));
+    const sq=$("#sq");
+    if(sq){
+      sq.oninput = e => { STOPQ=e.target.value; render(true); };
+      if(document.activeElement!==sq && STOPQ){ sq.focus();
+        sq.setSelectionRange(STOPQ.length,STOPQ.length); }
+    }
+  }
   if(VIEW==="trips") wireUpload();
+  // The tab title is a status surface: a rider with this pinned in a
+  // background tab should be able to see that something needs them.
+  const acted = ((ST?.findings)||[]).filter(f=>f.verdict.act==="INTERVENE").length;
+  const title = acted ? `(${acted}) Dispatch \u2014 action needed` : "Dispatch";
+  if(title !== LASTTITLE){ document.title = LASTTITLE = title; }
+  const head = document.querySelector(".answer .big");
+  if(head && $("#announce").textContent !== head.textContent)
+    $("#announce").textContent = head.textContent;
+
+  if(VIEW==="map"){
+    const q=$("#mq");
+    if(q){
+      q.oninput = e => { MQ=e.target.value; render(); };
+      if(document.activeElement!==q && MQ) { q.focus();
+        q.setSelectionRange(MQ.length,MQ.length); }
+    }
+    const ob=$("#onlybad"); if(ob) ob.onclick=()=>{MONLYBAD=!MONLYBAD; render();};
+    const cs=$("#clearsel"); if(cs) cs.onclick=()=>{MSEL.clear(); render();};
+    paintMap();
+  }
   if(VIEW==="search"){
     const inp = $("#q");
     inp.focus(); inp.setSelectionRange(Q.length, Q.length);
@@ -915,12 +1287,22 @@ async function render(){
   }
 }
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-v],[data-open],[data-mode],[data-prov],[data-follow],[data-run]");
+  const t = e.target.closest("[data-v],[data-open],[data-mode],[data-prov],"+
+    "[data-follow],[data-run],[data-route],[data-stop],[data-stopback]");
   if(!t) return;
   if(t.dataset.v){ VIEW = t.dataset.v; Q = ""; closeSheet(); return render(); }
   if(t.dataset.mode){ MODE = t.dataset.mode; SEL = 0; return render(); }
   if(t.dataset.open) return open(t.dataset.open);
   if(t.dataset.prov != null) return showPaper(+t.dataset.prov);
+  if(t.dataset.stop){ return loadArrivals(t.dataset.stop); }
+  if(t.hasAttribute("data-stopback")){
+    ARRSTOP=""; ARRIVALS=null; return render(true);
+  }
+  if(t.dataset.route){
+    const id=t.dataset.route;
+    MSEL.has(id)?MSEL.delete(id):MSEL.add(id);
+    return render();
+  }
   if(t.dataset.follow){
     const k = t.dataset.follow;
     FOLLOW.has(k) ? FOLLOW.delete(k) : FOLLOW.add(k);
@@ -929,10 +1311,21 @@ document.addEventListener("click", async e => {
   if(t.dataset.run !== undefined) return run();
 });
 $("#scrim").onclick = closeSheet; $("#sheetx").onclick = closeSheet;
+$("#keys").onclick = e => { if(e.target === $("#keys")) $("#keys").hidden = true; };
 document.addEventListener("keydown", e => {
   if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k"){
     e.preventDefault(); VIEW = "search"; return render(); }
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName||"");
+  if(!typing && (e.key === "?" || (e.key === "/" && e.shiftKey))){
+    e.preventDefault();
+    const k=$("#keys"); k.hidden = !k.hidden; return;
+  }
+  if(!typing && "123456".includes(e.key)){
+    const order=["now","search","map","stops","trips","evidence"];
+    VIEW = order[+e.key - 1]; Q=""; closeSheet(); return render();
+  }
   if(e.key === "Escape"){
+    if(!$("#keys").hidden){ $("#keys").hidden = true; return; }
     if($("#sheet").classList.contains("on")) return closeSheet();
     if(VIEW==="search" && Q){ Q=""; return render(); }
   }
@@ -983,13 +1376,41 @@ function wireUpload(){
 }
 
 /* --- data ----------------------------------------------------------------- */
+let _lastCat=0, _lastVeh=0, OFFLINE=false;
 async function tick(){
-  try{ ST = await (await fetch("/api/state")).json(); }catch(e){ return; }
-  try{ CAT = await (await fetch("/api/catalog")).json(); _rkeys = []; }catch(e){}
-  $("#f-backend").textContent = ST.backend||"—";
-  $("#f-clock").textContent = ST.clock? hhmm(ST.clock) : "idle";
+  const now = Date.now();
+  try{
+    ST = await (await fetch("/api/state")).json();
+    OFFLINE = false;
+  }catch(e){ OFFLINE = true; paintStatus(); return; }
+
+  // The catalog only moves when findings or legs do, so poll it lazily.
+  const legsChanged = (ST.itinerary||[]).length !== ((CAT?.legs)||[]).length;
+  if(!CAT || legsChanged || now - _lastCat > 4000){
+    try{ CAT = await (await fetch("/api/catalog")).json(); _rkeys=[]; _lastCat=now; }
+    catch(e){}
+  }
+  // Vehicle positions matter on the map; elsewhere a stale count is fine.
+  if(VIEW==="stops" && ARRSTOP && now - (window.__lastArr||0) > 6000){
+    window.__lastArr = now;
+    try{
+      ARRIVALS = (await (await fetch("/api/arrivals?stop="+
+        encodeURIComponent(ARRSTOP))).json()).arrivals||[];
+    }catch(e){}
+  }
+  const needVeh = VIEW==="map" ? 2000 : 15000;
+  if(!MAPDATA || now - _lastVeh > needVeh){
+    try{ MAPDATA = await (await fetch("/api/vehicles")).json(); _lastVeh=now; }
+    catch(e){}
+  }
+  paintStatus();
   if(!$("#sheet").classList.contains("on") || VIEW!=="search") render();
   if(ST.status!=="running" && POLL){ clearInterval(POLL); POLL=null; }
+}
+
+function paintStatus(){
+  $("#f-backend").textContent = OFFLINE ? "offline" : (ST?.backend||"—");
+  $("#f-clock").textContent = ST?.clock ? hhmm(ST.clock) : "idle";
 }
 async function run(){
   const worlds = await (await fetch("/api/scenarios")).json();

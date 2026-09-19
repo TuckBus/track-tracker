@@ -4,8 +4,11 @@
     python3 -m dispatch.cli fixtures           build a labelled world
     python3 -m dispatch.cli replay             run a world through the pipeline
     python3 -m dispatch.cli eval               score the triage arms
+    python3 -m dispatch.cli predict-eval       score arrival predictions
     python3 -m dispatch.cli sweep              tune a detector threshold
     python3 -m dispatch.cli record --out DIR   poll the live feeds
+    python3 -m dispatch.cli gtfs               fetch PRT static GTFS (map geometry)
+    python3 -m dispatch.cli verify             rebuild + test + re-derive all numbers
     python3 -m dispatch.cli doctor             feeds and model endpoint reachable
     python3 -m dispatch.cli serve              the dashboard
     python3 -m dispatch.cli demo               all of the above, one command
@@ -112,6 +115,38 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_predict_eval(args: argparse.Namespace) -> int:
+    from . import evaluate_predictions as ep
+
+    if args.arms:
+        arms = ep.compare(args.world, gtfs=args.gtfs)
+        print(ep.arms_table(arms))
+    if args.horizon_sweep:
+        print("horizon policy, measured:")
+        print(ep.horizon_sweep(args.world, gtfs=args.gtfs))
+    rep = ep.run(args.world, gtfs=args.gtfs, mode=args.mode,
+                 horizon_s=None if args.horizon == 0 else args.horizon)
+    if not rep.scored:
+        print("nothing to score: no route geometry, or no snapshots.",
+              file=sys.stderr)
+        print("try: python3 -m dispatch.cli fixtures", file=sys.stderr)
+        return 2
+    print(ep.table(rep))
+    print(ep.coverage(rep))
+    if args.out:
+        ep.write_report(rep, args.out, root=args.world)
+        print(f"wrote {args.out}")
+    normal = rep.rows.get("normal operation")
+    bad = rep.rows.get("disrupted vehicle")
+    if normal and bad and normal.n and bad.n:
+        print(f"\nmedian error on a moving bus: {normal.median_abs:.0f}s")
+        print(f"median error on a disrupted one: {bad.median_abs:.0f}s "
+              f"({bad.median_abs / max(normal.median_abs, 1):.0f}x worse)")
+        print("That gap is why disruption detection is a separate system and\n"
+              "not something inferred from a drifting ETA.")
+    return 0
+
+
 def cmd_sweep(args: argparse.Namespace) -> int:
     from . import evaluate
 
@@ -140,6 +175,113 @@ def cmd_record(args: argparse.Namespace) -> int:
     print("\nNo ground truth, so `eval` will not score this. It is what\n"
           "`replay` and the dashboard should run against.")
     return 0
+
+
+PRT_GTFS_URL = "https://www.rideprt.org/developerresources/GTFS.zip"
+
+
+def cmd_gtfs(args: argparse.Namespace) -> int:
+    """Fetch PRT's static GTFS, which is what gives the map real geometry.
+
+    The realtime feed carries a route id and a coordinate and nothing else, so
+    without this the map can draw vehicles but not the lines they run on, and
+    routes show as bare ids rather than "61C McKeesport - Homestead".
+    """
+    import urllib.request
+
+    from . import gtfs_static
+
+    out = args.out
+    if not args.skip_download:
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        print(f"downloading {PRT_GTFS_URL}")
+        try:
+            req = urllib.request.Request(
+                PRT_GTFS_URL, headers={"User-Agent": "dispatch/0.1"})
+            with urllib.request.urlopen(req, timeout=60) as r, open(out, "wb") as fh:
+                fh.write(r.read())
+        except Exception as exc:
+            print(f"  failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print(f"  download it by hand to {out} and re-run with "
+                  f"--skip-download", file=sys.stderr)
+            return 1
+        print(f"  saved {os.path.getsize(out):,} bytes -> {out}")
+
+    routes = gtfs_static.load(out)
+    print(gtfs_static.summary(routes))
+    for r in list(routes.values())[:8]:
+        d = r.to_dict()
+        print(f"  {d['label']:>6s}  {d['mode']:10s} {len(d['shape']):3d} pts  "
+              f"{d['name'][:44]}")
+    if len(routes) > 8:
+        print(f"  ... and {len(routes) - 8} more")
+    print("\nThe map picks this up automatically. Start it with:")
+    print("  python3 -m dispatch.cli serve --live")
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Rebuild everything and re-derive every number in the README.
+
+    Exists because "it works on my machine" is not evidence. This regenerates
+    the world from a fixed seed, runs the tests, scores both the triage arms
+    and the arrival predictors, and prints the headline figures. Anyone who
+    clones the repo can run it and get the same output.
+    """
+    import subprocess
+    import unittest
+
+    from . import evaluate, evaluate_predictions as ep
+    from .fixture_docs import write_all
+    from .replay import load_truth
+    from .simulate import World
+
+    ok = True
+    print("1/4  building the labelled world (seed 7)")
+    World(start_epoch=args.start, hours=3.0, seed=7).write(args.world)
+    write_all(DEFAULT_DOCS, args.start)
+    truth = load_truth(args.world)
+    pos = sum(1 for sc in truth["scenarios"] if sc["should_notify"])
+    print(f"     {truth['ticks']} snapshots, {len(truth['scenarios'])} scenarios,"
+          f" {pos} should reach the user")
+
+    print("\n2/4  tests")
+    loader = unittest.TestLoader()
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    suite = loader.discover(os.path.join(here, "tests"))
+    result = unittest.TextTestRunner(verbosity=0).run(suite)
+    print(f"     {result.testsRun} tests, "
+          f"{len(result.failures)} failures, {len(result.errors)} errors")
+    ok = ok and result.wasSuccessful()
+
+    print("\n3/4  triage arms")
+    arms = evaluate.compare(args.world, ["detector", "rules", "nemotron"])
+    print(evaluate.table(arms))
+    rules = next((a for a in arms if a.arm == "rules"), None)
+    if rules:
+        print(f"     rules baseline: F1 {rules.f1:.2f}, recall {rules.recall:.2f},"
+              f" median lead {rules.median_lead_min} min")
+        ok = ok and rules.recall == 1.0
+
+    print("\n4/4  arrival predictors")
+    pa = ep.compare(args.world)
+    print(ep.arms_table(pa))
+    learned = dict(pa).get("segment (learned)")
+    naive = dict(pa).get("speed (constant)")
+    if learned and naive:
+        a, b = learned.rows.get("all"), naive.rows.get("all")
+        print(f"     learned segments beat constant speed: "
+              f"{b.median_abs:.0f}s -> {a.median_abs:.0f}s median")
+        ok = ok and a.median_abs < b.median_abs
+        d = learned.rows.get("disrupted vehicle")
+        n = learned.rows.get("normal operation")
+        if d and n and n.median_abs:
+            print(f"     and fall apart on a disrupted vehicle: "
+                  f"{n.median_abs:.0f}s -> {d.median_abs:.0f}s "
+                  f"({d.median_abs/n.median_abs:.0f}x worse)")
+
+    print("\n" + ("all checks passed" if ok else "SOMETHING FAILED, see above"))
+    return 0 if ok else 1
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -185,7 +327,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
     serve(args.world, port=args.port, db=args.db,
-          open_browser=not args.no_open)
+          open_browser=not args.no_open,
+          live=getattr(args, "live", False), base=getattr(args, "base", None))
     return 0
 
 
@@ -220,6 +363,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default="EVAL.md")
     p.set_defaults(func=cmd_eval)
 
+    p = sub.add_parser("predict-eval",
+                       help="score arrival predictions against observed arrivals")
+    p.add_argument("--world", default=DEFAULT_WORLD)
+    p.add_argument("--gtfs", default=None)
+    p.add_argument("--out", default="PREDICTIONS.md")
+    p.add_argument("--mode", default="segment", choices=("segment", "speed"))
+    p.add_argument("--horizon", type=int, default=1200,
+                   help="refuse beyond this many seconds; 0 to never refuse")
+    p.add_argument("--arms", action="store_true",
+                   help="also score the constant-speed predictor for comparison")
+    p.add_argument("--horizon-sweep", action="store_true")
+    p.set_defaults(func=cmd_predict_eval)
+
     p = sub.add_parser("sweep", help="sweep a detector threshold")
     p.add_argument("--world", default=DEFAULT_WORLD)
     p.add_argument("--arm", default="rules")
@@ -232,6 +388,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--base", default=None,
                    help="override feed host, e.g. http://127.0.0.1:8800")
     p.set_defaults(func=cmd_record)
+
+    p = sub.add_parser("gtfs", help="fetch PRT static GTFS for map geometry")
+    p.add_argument("--out", default="fixtures/prt-gtfs.zip")
+    p.add_argument("--skip-download", action="store_true",
+                   help="just inspect the file already at --out")
+    p.set_defaults(func=cmd_gtfs)
+
+    p = sub.add_parser("verify",
+                       help="rebuild, test, and re-derive every published number")
+    p.add_argument("--world", default=DEFAULT_WORLD)
+    p.add_argument("--start", type=int, default=1758300000)
+    p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("doctor", help="check feeds and model endpoint")
     p.set_defaults(func=cmd_doctor)
@@ -248,6 +416,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--db", default=None)
     p.add_argument("--no-open", action="store_true")
+    p.add_argument("--live", action="store_true",
+                   help="poll the real PRT feed and map the whole system")
+    p.add_argument("--base", default=None,
+                   help="override feed host (for tools/mock_prt.py)")
     p.set_defaults(func=cmd_serve)
     return ap
 

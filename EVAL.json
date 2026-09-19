@@ -47,5 +47,30 @@
     "fellback": 0,
     "median_latency_ms": 0,
     "note": ""
+  },
+  {
+    "arm": "rules (no layover join)",
+    "tp": 4,
+    "fp": 3,
+    "fn": 0,
+    "tn": 11,
+    "spurious": 0,
+    "precision": 0.571,
+    "recall": 1.0,
+    "f1": 0.727,
+    "signals": 16,
+    "notifications": 7,
+    "alerts_per_hour": 2.33,
+    "median_lead_min": 6.7,
+    "fp_by_class": {
+      "TERMINAL_LAYOVER": 1,
+      "TIMEPOINT_HOLD": 1,
+      "GARAGE_PULLIN": 1
+    },
+    "fn_by_class": {},
+    "schema_failures": 0,
+    "fellback": 0,
+    "median_latency_ms": 0,
+    "note": "terminal-stop join disabled"
   }
 ]

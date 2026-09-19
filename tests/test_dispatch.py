@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -197,6 +198,175 @@ class TestPortability(unittest.TestCase):
         from datetime import datetime
         local = datetime.fromtimestamp(epoch, tz=resolve_tz())
         self.assertEqual((local.hour, local.minute), (14, 30))
+
+
+class TestPrediction(unittest.TestCase):
+    """The arrival predictor, including the cases where it refuses to answer."""
+
+    def _geo(self):
+        from dispatch.predict import RouteGeometry
+        # A straight line east along a constant latitude, ~430m between points.
+        pts = [(40.4400, -79.9600 + i * 0.005) for i in range(6)]
+        g = RouteGeometry(route_id="TEST", points=pts)
+        g.attach_stops([(f"S{i}", pts[i][0], pts[i][1]) for i in range(6)])
+        return g
+
+    def _obs(self, lat, lon, t, vid="v1"):
+        return Observation(source_type="prt-bus", vehicle_id=vid,
+                           route_id="TEST", trip_id="T1", observed_at=t,
+                           lat=lat, lon=lon, status="IN_TRANSIT_TO")
+
+    def test_projection_puts_an_on_route_point_on_the_route(self):
+        g = self._geo()
+        along, off = g.project(40.4400, -79.9550)
+        self.assertLess(off, 5.0)
+        self.assertGreater(along, 0)
+        self.assertLess(along, g.length)
+
+    def test_stops_ahead_are_only_ahead(self):
+        g = self._geo()
+        mid = g.length / 2
+        ahead = g.stops_ahead(mid, limit=10)
+        self.assertTrue(all(d > 0 for _sid, d in ahead))
+        self.assertTrue(all(b >= a for (_x, a), (_y, b) in
+                            zip(ahead, ahead[1:])))
+
+    def test_moving_vehicle_gets_a_believable_eta(self):
+        from dispatch.predict import Predictor
+        g = self._geo()
+        p = Predictor({"TEST": g})
+        # 10 m/s east for two minutes.
+        for i in range(7):
+            t = FIXED_NOW + i * 20
+            lon = -79.9600 + (i * 200) / (111_320 * math.cos(math.radians(40.44)))
+            p.observe([self._obs(40.4400, lon, t)], t)
+        key = next(iter(p.tracks))
+        speed, n = p.tracks[key].speed_mps()
+        self.assertGreater(speed, 5.0)
+        self.assertLess(speed, 15.0)
+        preds = p.predict_vehicle(key, now=FIXED_NOW + 120)
+        self.assertTrue(preds)
+        first = preds[0]
+        self.assertEqual(first.basis, "speed")
+        self.assertIsNotNone(first.eta_s)
+        # distance / speed, within a wide tolerance
+        self.assertAlmostEqual(first.eta_s, first.distance_m / speed, delta=30)
+
+    def test_stationary_vehicle_is_refused_not_guessed(self):
+        """REGRESSION-shaped: dividing by a speed of zero is worse than silence."""
+        from dispatch.predict import Predictor
+        p = Predictor({"TEST": self._geo()})
+        for i in range(8):
+            t = FIXED_NOW + i * 20
+            p.observe([self._obs(40.4400, -79.9550, t)], t)
+        key = next(iter(p.tracks))
+        preds = p.predict_vehicle(key, now=FIXED_NOW + 160)
+        self.assertTrue(preds)
+        self.assertEqual(preds[0].basis, "stalled")
+        self.assertIsNone(preds[0].eta_s)
+        self.assertEqual(preds[0].confidence, 0.0)
+
+    def test_new_vehicle_has_insufficient_data(self):
+        from dispatch.predict import Predictor
+        p = Predictor({"TEST": self._geo()})
+        p.observe([self._obs(40.4400, -79.9590, FIXED_NOW)], FIXED_NOW)
+        key = next(iter(p.tracks))
+        self.assertEqual(p.predict_vehicle(key, now=FIXED_NOW)[0].basis,
+                         "insufficient_data")
+
+    def test_new_trip_resets_the_speed_estimate(self):
+        """A bus starting its next trip jumps backwards along the shape. Without
+        a reset the speed estimate goes negative and every ETA is nonsense."""
+        from dispatch.predict import Predictor
+        g = self._geo()
+        p = Predictor({"TEST": g})
+        for i in range(6):
+            t = FIXED_NOW + i * 20
+            lon = -79.9600 + (i * 300) / (111_320 * math.cos(math.radians(40.44)))
+            p.observe([self._obs(40.4400, lon, t)], t)
+        key = next(iter(p.tracks))
+        before = p.tracks[key].trips
+        # back to the start of the route
+        p.observe([self._obs(40.4400, -79.9600, FIXED_NOW + 140)], FIXED_NOW + 140)
+        self.assertEqual(p.tracks[key].trips, before + 1)
+        self.assertGreaterEqual(p.tracks[key].speed_mps()[0], 0.0)
+
+    def test_arrivals_board_puts_refusals_last(self):
+        from dispatch.predict import Predictor
+        g = self._geo()
+        p = Predictor({"TEST": g})
+        k = 111_320 * math.cos(math.radians(40.44))
+        for i in range(7):
+            t = FIXED_NOW + i * 20
+            p.observe([self._obs(40.4400, -79.9600 + (i * 200) / k, t, "moving")], t)
+            p.observe([self._obs(40.4400, -79.9585, t, "parked")], t)
+        board = p.arrivals("S4", now=FIXED_NOW + 120)
+        self.assertGreaterEqual(len(board), 2)
+        self.assertIsNotNone(board[0].eta_s)
+        self.assertIsNone(board[-1].eta_s)
+
+    def test_learned_segments_beat_constant_speed(self):
+        """The segment model has to earn its place, not be asserted.
+
+        Also guards the fixture: if the simulator ever loses its per-location
+        speed profiles, this fails, because a world with one uniform speed
+        cannot distinguish the two predictors. That is how the null result
+        happened the first time.
+        """
+        from dispatch import evaluate_predictions as ep
+        world = _shared_world()
+        arms = dict(ep.compare(world, gtfs=os.path.join(world, "gtfs-static.zip")))
+        naive = arms["speed (constant)"].rows.get("all")
+        learned = arms["segment (learned)"].rows.get("all")
+        self.assertTrue(naive and naive.n and learned and learned.n)
+        self.assertLess(learned.median_abs, naive.median_abs,
+                        "learned segments did not beat constant speed; has the "
+                        "fixture lost its speed profiles?")
+        self.assertLess(learned.p90_abs, naive.p90_abs)
+
+    def test_horizon_policy_refuses_instead_of_guessing_far_ahead(self):
+        from dispatch.predict import Predictor
+        g = self._geo()
+        p = Predictor({"TEST": g}, mode="speed", horizon_s=60)
+        k = 111_320 * math.cos(math.radians(40.44))
+        for i in range(7):
+            t = FIXED_NOW + i * 20
+            p.observe([self._obs(40.4400, -79.9600 + (i * 100) / k, t)], t)
+        key = next(iter(p.tracks))
+        preds = p.predict_vehicle(key, limit=6, now=FIXED_NOW + 120)
+        far = [x for x in preds if x.basis == "beyond_horizon"]
+        self.assertTrue(far, "nothing was refused despite a 60s horizon")
+        self.assertTrue(all(x.eta_s is None for x in far))
+
+    def test_segment_speeds_learn_a_slow_stretch(self):
+        from dispatch.predict import SegmentSpeeds
+        seg = SegmentSpeeds(route_id="TEST", length=2000.0)
+        # 2 m/s through the first 400m, 12 m/s through the next 400m
+        for _ in range(3):
+            seg.record(0, 400, 200)
+            seg.record(400, 800, 33)
+        slow = seg.speeds[seg.index(200)]
+        fast = seg.speeds[seg.index(600)]
+        self.assertLess(slow, 4.0)
+        self.assertGreater(fast, 8.0)
+        # integrating should cost more than the fast stretch alone
+        t = seg.travel_time(0, 800, fallback_mps=8.0)
+        self.assertGreater(t, 800 / 12.0)
+
+    def test_prediction_eval_finds_the_disruption_gap(self):
+        """The headline finding: good on a moving bus, useless on a broken one."""
+        from dispatch import evaluate_predictions as ep
+        world = _shared_world()
+        rep = ep.run(world)
+        self.assertGreater(rep.scored, 500)
+        normal = rep.rows.get("normal operation")
+        bad = rep.rows.get("disrupted vehicle")
+        self.assertTrue(normal and normal.n, "no normal-operation predictions")
+        self.assertTrue(bad and bad.n, "no disrupted-vehicle predictions")
+        self.assertLess(normal.median_abs, 120)
+        self.assertGreater(bad.median_abs, normal.median_abs * 5)
+        # refusals must be counted, not silently scored
+        self.assertIn("stalled", rep.basis_counts)
 
 
 class TestGeo(unittest.TestCase):
