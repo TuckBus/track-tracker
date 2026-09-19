@@ -1,0 +1,44 @@
+# Generated worlds and recordings.
+#
+# fixtures/ is not committed on purpose: it is ~4MB of binary protobuf that
+# one command rebuilds, and the generator is seeded, so anyone who clones this
+# reproduces the numbers in EVAL.md exactly:
+#
+#     python3 -m dispatch.cli fixtures
+#     python3 -m dispatch.cli eval
+#
+fixtures/
+recordings/
+
+# Local state
+*.db
+dispatch.db
+
+# Secrets. NVIDIA_API_KEY belongs in your shell, not in the repo.
+#
+# git history is permanent: committing a key and deleting it in a later commit
+# does NOT remove it, and GitHub's secret scanners find public keys in minutes.
+# If one ever lands here, revoke it at build.nvidia.com rather than trying to
+# scrub the history.
+.env
+.env.*
+!.env.example
+*.key
+*credentials*.json
+secrets.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
