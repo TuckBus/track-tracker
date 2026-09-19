@@ -9,7 +9,7 @@ Vercel Next.js deployment
   |-- React dashboard
   |-- /api/state
   |-- /api/poll
-  |-- /api/cron/poll (Vercel Cron, every five minutes)
+  |-- /api/cron/poll (Vercel Cron, once daily on Hobby)
   |-- /api/actions/[id]/execute
   |-- PRT GTFS-RT + OpenSky + Amtrak fetchers
   `-- Nemotron API
@@ -17,7 +17,7 @@ Vercel Next.js deployment
              `-- optional Upstash Redis state persistence
 ```
 
-The app is request-driven because Vercel Functions are not persistent processes. Vercel Cron invokes `/api/cron/poll`; the browser also refreshes through `/api/poll` every five minutes and through the **Run check now** button. Upstash Redis is recommended for state shared across function invocations and deployments.
+The app is request-driven because Vercel Functions are not persistent processes. On Hobby, Vercel Cron invokes `/api/cron/poll` once per day. The browser still refreshes through `/api/poll` every five minutes, and users can also trigger polling through the **Run check now** button. Upstash Redis is recommended for state shared across function invocations and deployments.
 
 ## Prerequisites
 
@@ -147,11 +147,10 @@ Vercel cannot reach `127.0.0.1`, a Brev private IP, or a URL that is reachable o
 
 Brev pricing is provider-, region-, GPU-, and availability-dependent. The Brev console is the source of truth; the figures below are planning ranges, not a quote. Public L40S marketplace comparisons commonly show roughly **$1.09-$3.50 per GPU-hour**, while cheaper marketplace capacity can sometimes be below $1/hour. Confirm the exact SKU price in `brev search` or the Brev console before provisioning.
 
-The app's default five-minute schedule makes:
+The Hobby-compatible daily server cron schedule makes:
 
-- `12 polls/hour`
-- `288 polls/day`
-- `8,640 polls/30-day month`
+- `1 poll/day`
+- `30 polls/30-day month`
 
 The number of requests does not directly determine Brev's bill when the GPU VM remains running. GPU runtime is the main cost:
 
@@ -171,9 +170,9 @@ monthly GPU cost = hourly GPU price × running hours per month
 running hours per month = days × hours running per day
 ```
 
-For example, an L40S priced at `$1.50/hour` and left on for `8 hours/day` is approximately `1.50 × 30 × 8 = $360/month`, before storage and network charges. Reducing polling from five minutes to fifteen minutes lowers request count but does **not** lower VM cost if the VM stays on; stopping the VM is the meaningful cost control.
+For example, an L40S priced at `$1.50/hour` and left on for `8 hours/day` is approximately `1.50 × 30 × 8 = $360/month`, before storage and network charges. Running cron daily instead of more frequently lowers request count but does **not** lower VM cost if the VM stays on; stopping the VM is the meaningful cost control.
 
-For the lowest practical spend, use the smallest compatible single GPU, keep the five-minute schedule, avoid duplicate retries, compact prompts, stop the VM when idle, and use `brev port-forward` for local development instead of a public endpoint.
+For the lowest practical spend, use the smallest compatible single GPU, keep the daily Hobby cron schedule, use the browser's five-minute refresh or **Run check now** when immediate checks are needed, avoid duplicate retries, compact prompts, stop the VM when idle, and use `brev port-forward` for local development instead of a public endpoint.
 
 ### State persistence
 
@@ -216,7 +215,7 @@ Polling also ingests posted PRT GTFS-Realtime service alerts and includes them i
 
 ```json
 {
-  "crons": [{ "path": "/api/cron/poll", "schedule": "* * * * *" }]
+  "crons": [{ "path": "/api/cron/poll", "schedule": "0 0 * * *" }]
 }
 ```
 
@@ -228,7 +227,7 @@ The cron route:
 4. Validates the action payload.
 5. Saves the result in Redis.
 
-Vercel Cron availability and minimum schedule frequency depend on the Vercel plan. The default five-minute schedule avoids unnecessary GPU requests; use **Run check now** for an immediate analysis.
+On Vercel Hobby, cron jobs can run once per day. This project uses a daily `/api/cron/poll` schedule in `vercel.json`. For more frequent checks, rely on the browser's five-minute `/api/poll` refresh cadence or trigger **Run check now** manually.
 
 ## Local development
 
