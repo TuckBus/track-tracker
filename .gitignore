@@ -1,5 +1,8 @@
-frontend/node_modules/
-frontend/dist/
-__pycache__/
-*.py[cod]
+node_modules/
+.next/
+out/
+.vercel/
 .env
+.env.local
+__pycache__/
+frontend/dist/

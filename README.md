@@ -1,27 +1,21 @@
 # Project Dispatch
 
-Project Dispatch is a proactive Pittsburgh transit and logistics monitor. It polls PRT GTFS-RT, configurable Amtrak telemetry, and OpenSky state vectors, compiles observations into a strict action schema, and pushes actionable mitigations to a React dashboard over Server-Sent Events.
+Project Dispatch is a Vercel-native Next.js application for proactive Pittsburgh transit and logistics monitoring. The browser, API routes, Nemotron integration, provider polling, and dashboard are deployed as one project.
+
+See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for complete local setup and testing instructions.
 
 ## Run locally
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m backend
-```
-
-In another terminal:
-
-```powershell
-cd frontend
 npm install
 npm run dev
 ```
 
-The dashboard runs at `http://localhost:5173`; the API runs at `http://localhost:8000`. Set `NEMOTRON_ENDPOINT`, `NEMOTRON_API_KEY`, and `AMTRAK_TELEMETRY_URL` to enable live integrations. Without credentials, Dispatch uses deterministic fallback logic and remains usable for demonstrations.
+The app runs at `http://localhost:3000`. Configure the services described in [DEPLOYMENT.md](./DEPLOYMENT.md) for live integrations.
 
 ## API
 
 - `GET /api/state` returns normalized telemetry and action history.
 - `POST /api/poll` runs an immediate poll.
-- `GET /api/events` streams state and action events via SSE.
+- `GET /api/cron/poll` is invoked by Vercel Cron every minute.
 - `POST /api/actions/{id}/execute` executes a simulated email or calendar mitigation.
