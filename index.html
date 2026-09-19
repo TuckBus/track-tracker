@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SteelLink — PIT + PRT in one board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,500;6..72,650&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="rivet"></div>
+  <header class="mast">
+    <div class="brand">
+      <span class="mark">SL</span>
+      <div>
+        <p class="eyebrow">Steelhacks 2026 · Pittsburgh</p>
+        <h1>SteelLink</h1>
+      </div>
+    </div>
+    <p class="lede">One compiled board for <a href="https://flypittsburgh.com/" target="_blank" rel="noreferrer">PIT flights</a> and <a href="https://truetime.rideprt.org/home" target="_blank" rel="noreferrer">PRT TrueTime</a>. Airport Flyer, downtown, Oakland — without opening three tabs.</p>
+    <nav>
+      <button data-panel="hub" class="active">Hub</button>
+      <button data-panel="flights">PIT board</button>
+      <button data-panel="transit">TrueTime</button>
+      <button data-panel="connect">Connect</button>
+      <button data-panel="extract">Xtract</button>
+      <button data-panel="pitch">Seed</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="hub" class="panel active">
+      <div class="stat-row" id="stat-row">
+        <article class="stat"><span>Arrivals extracted</span><strong id="stat-arrivals">—</strong></article>
+        <article class="stat"><span>Departures extracted</span><strong id="stat-deps">—</strong></article>
+        <article class="stat warn"><span>Delayed / cancelled</span><strong id="stat-delay">—</strong></article>
+        <article class="stat"><span>Buses reporting</span><strong id="stat-buses">—</strong></article>
+        <article class="stat"><span>28X on the road</span><strong id="stat-flyer">—</strong></article>
+      </div>
+      <div class="split">
+        <article class="card">
+          <h2>Live corridor map</h2>
+          <p class="hint">TrueTime vehicle positions, scaled over the airport–downtown–Oakland spine. Gold = 28X Airport Flyer.</p>
+          <div id="map" class="map"></div>
+          <div class="legend">
+            <span><i class="dot gold"></i> 28X Airport Flyer</span>
+            <span><i class="dot rust"></i> Other PRT buses</span>
+            <span><i class="dot pale"></i> Light rail</span>
+          </div>
+        </article>
+        <article class="card">
+          <h2>Next Airport Flyer</h2>
+          <div id="hub-predictions" class="stack"></div>
+          <h2 class="spaced">Service notes</h2>
+          <div id="hub-alerts" class="stack"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="flights" class="panel">
+      <div class="toolbar">
+        <input id="flight-search" type="search" placeholder="Search flight, city, airline…" />
+        <div class="pills">
+          <button data-kind="arrival" class="pill active">Arrivals</button>
+          <button data-kind="departure" class="pill">Departures</button>
+        </div>
+        <p class="hint" id="flight-clock"></p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>City</th>
+              <th>Flight</th>
+              <th>Gate</th>
+              <th>Bags</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="flight-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="transit" class="panel">
+      <div class="toolbar">
+        <input id="route-filter" type="search" placeholder="Filter route (28X, 61C, RED…)" />
+        <p class="hint">Compiled from PRT GTFS-Realtime vehicle positions — the same feed behind TrueTime.</p>
+      </div>
+      <div class="split">
+        <article class="card">
+          <h2>Vehicles</h2>
+          <div id="vehicle-list" class="list"></div>
+        </article>
+        <article class="card">
+          <h2>Busiest routes right now</h2>
+          <div id="route-bars" class="bars"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="connect" class="panel">
+      <article class="card">
+        <h2>Ask the corridor — not a chatbot</h2>
+        <p class="hint">SteelLink answers with extracted boards and TrueTime predictions. Try a flight number plus a neighborhood.</p>
+        <form id="plan-form">
+          <input name="q" value="UA 1285 to Oakland after I land" maxlength="200" />
+          <button type="submit">Compile itinerary</button>
+        </form>
+        <div class="chips">
+          <button type="button" data-q="WN 2630 to downtown">WN 2630 downtown</button>
+          <button type="button" data-q="28X Airport Flyer">28X status</button>
+          <button type="button" data-q="Get to the airport from CMU">CMU to PIT</button>
+        </div>
+        <div id="plan-out" class="itinerary"></div>
+      </article>
+    </section>
+
+    <section id="extract" class="panel">
+      <article class="card">
+        <h2>Xtract pipeline</h2>
+        <p class="hint">Unstructured operator pages become one JSON contract the rest of the product can trust.</p>
+        <div id="extract-out" class="pipeline"></div>
+      </article>
+    </section>
+
+    <section id="pitch" class="panel">
+      <article class="card pitch">
+        <p class="eyebrow">Seed round track</p>
+        <h2>The regional travel tab Pittsburgh does not have</h2>
+        <p>Arriving students, families, and shift workers still bounce between FlyPittsburgh, TrueTime, and a rideshare quote. SteelLink compiles those sources into one operational picture and a grounded connection to the 28X Airport Flyer.</p>
+        <ul>
+          <li><strong>Problem:</strong> PIT and PRT already publish the data. Nobody compiles the last mile from gate to campus.</li>
+          <li><strong>Wedge:</strong> Airport Flyer + Oakland/CMU/Pitt corridor, then expand to Amtrak and intercity buses.</li>
+          <li><strong>Moat:</strong> Extraction + live GTFS-RT, not another wrapper around a chat model.</li>
+          <li><strong>Next 48 hours:</strong> stop-level walk times, saved trips, SMS when a delayed flight should skip the current 28X.</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+  <footer>
+    <p>SteelLink compiles public FlyPittsburgh boards and PRT developer feeds for Steelhacks 2026. Not an official ACAA or PRT product.</p>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
