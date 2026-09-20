@@ -10,7 +10,11 @@ export type PrtStop = {
   longitude: number;
   routes?: string[];
 };
-type StopCatalog = { stops: PrtStop[]; routesByStop: Map<string, string[]> };
+type StopCatalog = {
+  stops: PrtStop[];
+  routesByStop: Map<string, string[]>;
+  stopSequencesByRouteDirection: Map<string, Map<string, { min: number; max: number }>>;
+};
 
 let cachedCatalog: StopCatalog | null = null;
 let loading: Promise<StopCatalog> | null = null;
@@ -66,17 +70,19 @@ async function loadStops(): Promise<StopCatalog> {
       }
     }
   }
-  const tripRoutes = new Map<string, string>();
+  const tripRoutes = new Map<string, { route: string; direction: string }>();
   const tripsEntry = archive.getEntry("trips.txt");
   if (tripsEntry) {
     const tripLines = tripsEntry.getData().toString("utf8").split(/\r?\n/).filter(Boolean);
     const tripHeaders = parseCsvLine(tripLines.shift() || "");
     const tripIdIndex = tripHeaders.indexOf("trip_id");
     const tripRouteIndex = tripHeaders.indexOf("route_id");
-    if (tripIdIndex >= 0 && tripRouteIndex >= 0) {
+    const tripDirectionIndex = tripHeaders.indexOf("direction_id");
+    if (tripIdIndex >= 0 && tripRouteIndex >= 0 && tripDirectionIndex >= 0) {
       for (const tripLine of tripLines) {
         const values = parseCsvLine(tripLine);
-        if (values[tripIdIndex] && values[tripRouteIndex]) tripRoutes.set(values[tripIdIndex], values[tripRouteIndex]);
+        const route = routeNames.get(values[tripRouteIndex]);
+        if (values[tripIdIndex] && route) tripRoutes.set(values[tripIdIndex], { route, direction: values[tripDirectionIndex] });
       }
     }
   }
@@ -87,22 +93,37 @@ async function loadStops(): Promise<StopCatalog> {
     const stopTimeHeaders = parseCsvLine(stopTimeLines.shift() || "");
     const stopTimeIdIndex = stopTimeHeaders.indexOf("stop_id");
     const stopTimeTripIndex = stopTimeHeaders.indexOf("trip_id");
-    if (stopTimeIdIndex >= 0 && stopTimeTripIndex >= 0) {
+    const stopTimeSequenceIndex = stopTimeHeaders.indexOf("stop_sequence");
+    const stopSequencesByRouteDirection = new Map<string, Map<string, { min: number; max: number }>>();
+    if (stopTimeIdIndex >= 0 && stopTimeTripIndex >= 0 && stopTimeSequenceIndex >= 0) {
       for (const stopTimeLine of stopTimeLines) {
         const values = parseCsvLine(stopTimeLine);
-        const routeName = routeNames.get(tripRoutes.get(values[stopTimeTripIndex]) || "");
-        if (values[stopTimeIdIndex] && routeName) {
+        const trip = tripRoutes.get(values[stopTimeTripIndex]);
+        const sequence = Number(values[stopTimeSequenceIndex]);
+        if (values[stopTimeIdIndex] && trip && Number.isFinite(sequence)) {
+          const routeName = trip.route;
           const routes = routesByStop.get(values[stopTimeIdIndex]) || new Set<string>();
           routes.add(routeName);
           routesByStop.set(values[stopTimeIdIndex], routes);
+          const routeKey = `${values[stopTimeIdIndex]}|${routeName}`;
+          const directions = stopSequencesByRouteDirection.get(routeKey) || new Map<string, { min: number; max: number }>();
+          const current = directions.get(trip.direction) || { min: sequence, max: sequence };
+          current.min = Math.min(current.min, sequence);
+          current.max = Math.max(current.max, sequence);
+          directions.set(trip.direction, current);
+          stopSequencesByRouteDirection.set(routeKey, directions);
         }
       }
+      const normalizedRoutes = new Map<string, string[]>();
+      for (const [stopId, routes] of routesByStop) normalizedRoutes.set(stopId, [...routes].sort());
+      log.info("Loaded PRT static GTFS stop catalog", { stop_count: stops.length, stops_with_routes: normalizedRoutes.size });
+      return { stops: stops.map((stop) => ({ ...stop, routes: normalizedRoutes.get(stop.id) || [] })), routesByStop: normalizedRoutes, stopSequencesByRouteDirection };
     }
   }
   const normalizedRoutes = new Map<string, string[]>();
   for (const [stopId, routes] of routesByStop) normalizedRoutes.set(stopId, [...routes].sort());
   log.info("Loaded PRT static GTFS stop catalog", { stop_count: stops.length, stops_with_routes: normalizedRoutes.size });
-  return { stops: stops.map((stop) => ({ ...stop, routes: normalizedRoutes.get(stop.id) || [] })), routesByStop: normalizedRoutes };
+  return { stops: stops.map((stop) => ({ ...stop, routes: normalizedRoutes.get(stop.id) || [] })), routesByStop: normalizedRoutes, stopSequencesByRouteDirection: new Map() };
 }
 
 export async function getPrtStops() {
@@ -119,4 +140,9 @@ export async function getPrtStops() {
 export async function getPrtStopRoutes(stopId: string) {
   if (!cachedCatalog) await getPrtStops();
   return cachedCatalog?.routesByStop.get(stopId) || [];
+}
+
+export async function getPrtStopSequences(stopId: string, route: string) {
+  if (!cachedCatalog) await getPrtStops();
+  return cachedCatalog?.stopSequencesByRouteDirection.get(`${stopId}|${route}`) || new Map<string, { min: number; max: number }>();
 }

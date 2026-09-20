@@ -1,6 +1,6 @@
 import { getState } from "../../../lib/store";
 import { log } from "../../../lib/logging";
-import { getPrtStops, getPrtStopRoutes } from "../../../lib/stops";
+import { getPrtStops, getPrtStopRoutes, getPrtStopSequences } from "../../../lib/stops";
 import { fetchPrt } from "../../../lib/providers";
 import { analyze, predictEta } from "../../../lib/intelligence";
 
@@ -45,13 +45,22 @@ export async function POST(request: Request) {
     && item.longitude !== null
     && distanceMiles(item.latitude, item.longitude) <= 1.5,
   );
+  const stopSequences = selectedStop ? await getPrtStopSequences(selectedStop.id, line) : new Map<string, { min: number; max: number }>();
+  const isApproachingStop = (item: typeof liveTelemetry[number]) => {
+    const direction = item.metadata.direction_id;
+    const currentSequence = Number(item.metadata.current_stop_sequence);
+    if ((typeof direction !== "string" && typeof direction !== "number") || !Number.isFinite(currentSequence)) return false;
+    const target = stopSequences.get(String(direction));
+    return Boolean(target && currentSequence <= target.max);
+  };
   const etaCandidates = liveTelemetry.filter((item) =>
     item.source === "prt"
     && item.route !== null
     && normalizeLine(item.route) === normalizeLine(line)
     && item.latitude !== null
     && item.longitude !== null
-    && distanceMiles(item.latitude, item.longitude) <= 12,
+    && distanceMiles(item.latitude, item.longitude) <= 12
+    && isApproachingStop(item),
   ).map((item) => ({
     vehicle_id: item.vehicle_id,
     distance_miles: Number(distanceMiles(item.latitude!, item.longitude!).toFixed(2)),

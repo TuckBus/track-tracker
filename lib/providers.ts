@@ -42,7 +42,13 @@ export async function fetchPrt(url = process.env.PRT_VEHICLE_POSITIONS_URL || "h
       speed_mph: position?.speed ? position.speed * 2.23694 : null,
       altitude_ft: null,
       observed_at: observed,
-      metadata: { current_status: vehicle.currentStatus },
+      metadata: {
+        current_status: vehicle.currentStatus,
+        trip_id: vehicle.trip?.tripId,
+        direction_id: vehicle.trip?.directionId,
+        current_stop_sequence: vehicle.currentStopSequence,
+        current_stop_id: vehicle.stopId,
+      },
     }];
   });
 }
