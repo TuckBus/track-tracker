@@ -44,7 +44,7 @@ export type EtaPrediction = {
   status: "connected" | "failed" | "not_configured";
   error?: string;
 };
-export const ETA_BUFFER_MINUTES = 5;
+export const ETA_BUFFER_MINUTES = 1;
 
 export function conservativeEtaMinutes(minutes: number) {
   return Math.min(180, Math.round(minutes) + ETA_BUFFER_MINUTES);
