@@ -3,9 +3,9 @@ import { buildPrompt, conservativeEtaMinutes, fallbackAction, parseAction } from
 import { stagedTelemetry } from "../lib/test-telemetry";
 
 describe("Nemotron intelligence", () => {
-  it("adds a ten-minute safety buffer to model ETA estimates", () => {
-    expect(conservativeEtaMinutes(7)).toBe(17);
-    expect(conservativeEtaMinutes(170)).toBe(180);
+  it("adds a five-minute safety buffer to model ETA estimates", () => {
+    expect(conservativeEtaMinutes(7)).toBe(12);
+    expect(conservativeEtaMinutes(175)).toBe(180);
   });
 
   it("parses JSON embedded in a model response and adds friendly defaults", () => {
