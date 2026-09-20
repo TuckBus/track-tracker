@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, fallbackAction, parseAction } from "../lib/intelligence";
+import { buildPrompt, conservativeEtaMinutes, fallbackAction, parseAction } from "../lib/intelligence";
 import { stagedTelemetry } from "../lib/test-telemetry";
 
 describe("Nemotron intelligence", () => {
+  it("adds a ten-minute safety buffer to model ETA estimates", () => {
+    expect(conservativeEtaMinutes(7)).toBe(17);
+    expect(conservativeEtaMinutes(170)).toBe(180);
+  });
+
   it("parses JSON embedded in a model response and adds friendly defaults", () => {
     const action = parseAction(
       'Reasoning trace removed. {"status":"disrupted","action":"trigger_ui_alert","message":"Route 61A is delayed.","affected_routes":["61A"],"reasoning":"Vehicles are moving very slowly."}',
