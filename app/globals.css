@@ -79,6 +79,10 @@ header { position: relative; padding-bottom: 54px; } .eyebrow, .panel-title, foo
 .lookup-result strong { color:#6ce8aa; font:11px "DM Mono"; letter-spacing:.08em; text-transform:uppercase; }
 .lookup-result.anomalous { border-color:#79502b; background:#2a211d; }
 .lookup-result.anomalous strong { color:#ffbd73; }
+.eta-result { display:grid; grid-template-columns:auto auto 1fr; align-items:baseline; gap:8px; margin-top:8px; padding-top:10px; border-top:1px solid #2f5148; }
+.eta-result b { color:#8491a8; font:10px "DM Mono"; letter-spacing:.08em; }
+.eta-result strong { color:#b8f6d5; font-size:18px; }
+.eta-result span { color:#9ca8ba; }
 .loading-panel { display:flex; align-items:flex-start; gap:12px; margin-top:18px; padding:18px 23px; border:1px solid #273348; border-radius:7px; background:#111927; color:#a9b3c3; font-size:13px; } .loading-panel strong, .loading-panel span, .loading-panel small { display:block; } .loading-panel strong { color:#e8edf5; font-size:14px; } .loading-panel span { margin-top:5px; } .loading-panel small { max-width:720px; margin-top:8px; color:#8491a8; line-height:1.45; }
 .loading-spinner { width:14px; height:14px; border:2px solid #42516a; border-top-color:#6ce8aa; border-radius:50%; animation:spin .8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }

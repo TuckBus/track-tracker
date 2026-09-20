@@ -19,7 +19,7 @@ export default function Home() {
   const [stop, setStop] = useState("");
   const [stopId, setStopId] = useState("");
   const [line, setLine] = useState("");
-  const [lookup, setLookup] = useState<{ status: string; message: string; vehicle_count: number } | null>(null);
+  const [lookup, setLookup] = useState<{ status: string; message: string; vehicle_count: number; eta_minutes: number | null; eta_message: string; eta_confidence: string | null } | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
@@ -162,15 +162,15 @@ export default function Home() {
     if (!line) setLine((stops.length > 0 && !stopId ? stops[0].routes?.[0] : undefined) || state.telemetry.find((item) => item.source === "prt" && item.route)?.route || "61A");
   }, [line, state.telemetry, stop, stopId, stops]);
 
-  async function checkStop(event: React.FormEvent) {
-    event.preventDefault();
+  async function checkStop(event?: React.FormEvent) {
+    event?.preventDefault();
     setLookupLoading(true);
     setLookupError("");
     try {
       const response = await fetch("/api/anomaly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stop, stop_id: stopId, stop_routes: selectedStop?.routes, line }) });
-      const result = await response.json() as { status?: string; message?: string; vehicle_count?: number; error?: string };
+      const result = await response.json() as { status?: string; message?: string; vehicle_count?: number; eta_minutes?: number | null; eta_message?: string; eta_confidence?: string | null; error?: string };
       if (!response.ok) throw new Error(result.error || "Lookup failed");
-      setLookup({ status: result.status || "unknown", message: result.message || "", vehicle_count: result.vehicle_count || 0 });
+      setLookup({ status: result.status || "unknown", message: result.message || "", vehicle_count: result.vehicle_count || 0, eta_minutes: result.eta_minutes ?? null, eta_message: result.eta_message || "", eta_confidence: result.eta_confidence ?? null });
     } catch (error) {
       setLookupError(error instanceof Error ? error.message : "Lookup failed");
     } finally {
@@ -202,6 +202,10 @@ export default function Home() {
   const active = state.alerts.find((item) => item.source === "nemotron" && item.action === "trigger_ui_alert");
   const delayedRoutes = state.service_alerts.flatMap((alert) => alert.routes);
   const nemotronDelayedRoutes = [...new Set(state.alerts.filter((item) => item.source === "nemotron").flatMap((item) => item.affected_routes || []))];
+  useEffect(() => {
+    if (!selectedStop || !line || !selectedStop.routes?.some((route) => route.toLowerCase().replace(/[\s-]/g, "") === line.toLowerCase().replace(/[\s-]/g, ""))) return;
+    void checkStop();
+  }, [selectedStop, line]);
   const destinations = [
     { id: "airport-pit", name: "Pittsburgh International Airport", latitude: 40.4915, longitude: -80.2329 },
     { id: "airport-agc", name: "Allegheny County Airport", latitude: 40.3544, longitude: -79.9302 },
@@ -244,7 +248,7 @@ export default function Home() {
     </section>
     <section className="panel stop-panel"><div className="panel-title"><span>STOP ANOMALY CHECK</span><span className="live">LIVE TELEMETRY</span></div><p className="section-copy">Stop and line are prefilled from the monitored Pittsburgh service; adjust them before checking current telemetry.</p>
       <form className="stop-form" onSubmit={checkStop}><label className="stop-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setStopMenuOpen(false); }}><span className="label">BUS STOP</span><input role="combobox" aria-expanded={stopMenuOpen} value={stopSearch || stop} onFocus={() => setStopMenuOpen(true)} onChange={(event) => { setStopSearch(event.target.value); setStop(event.target.value); setStopId(""); setStopMenuOpen(true); }} placeholder={stopsLoading ? "Loading PRT stops..." : "Search PRT stops"} />{stopMenuOpen && !stopsLoading && <div className="stop-options">{matchingStops.map((candidate) => <button type="button" key={candidate.id} onClick={() => { setStop(candidate.name); setStopId(candidate.id); setLine(candidate.routes?.[0] || ""); setStopSearch(""); setStopMenuOpen(false); }}>{candidate.name}<small>{candidate.id}{candidate.routes?.length ? ` · ${candidate.routes.slice(0, 4).join(", ")}` : ""}</small></button>)}{matchingStops.length === 0 && <span className="no-options">No matching PRT stops</span>}</div>}</label><label><span className="label">LINE</span><select value={line} onChange={(event) => setLine(event.target.value)} disabled={!selectedStop?.routes?.length}><option value="">{selectedStop?.routes?.length ? "Choose a line" : "Select a stop first"}</option>{selectedStop?.routes?.map((route) => <option value={route} key={route}>{route}</option>)}</select></label><button type="submit" disabled={lookupLoading || !stop.trim() || !line.trim()}>{lookupLoading ? "Checking..." : "Check stop"}</button></form>
-      {lookup && <div className={`lookup-result ${lookup.status}`}><strong>{lookup.status === "anomalous" ? "Anomaly detected" : lookup.status === "on_time" ? "No anomaly detected" : "No live match"}</strong><span>{lookup.message} · {lookup.vehicle_count} matching vehicle{lookup.vehicle_count === 1 ? "" : "s"}.</span></div>}
+      {lookup && <div className={`lookup-result ${lookup.status}`}><strong>{lookup.status === "anomalous" ? "Anomaly detected" : lookup.status === "on_time" ? "No anomaly detected" : "Live estimate"}</strong><span>{lookup.message} · {lookup.vehicle_count} matching vehicle{lookup.vehicle_count === 1 ? "" : "s"}.</span><div className="eta-result"><b>NEXT {line} BUS</b><strong>{lookup.eta_minutes === null ? "No estimate" : `${lookup.eta_minutes} min`}</strong><span>{lookup.eta_message}{lookup.eta_confidence ? ` · ${lookup.eta_confidence} confidence` : ""}</span></div></div>}
       {lookupError && <div className="errors">{lookupError}</div>}
     </section>
     <section className="panel alert-panel"><div className="panel-title"><span>PROACTIVE ACTION CENTER</span><span className="count">{state.alerts.filter((item) => item.source === "nemotron").length}</span></div>

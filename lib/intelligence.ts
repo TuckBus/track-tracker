@@ -37,6 +37,13 @@ function riskSignals(telemetry: TelemetryRecord[], alerts: ServiceAlert[]) {
 }
 
 export type AnalysisContext = "network" | "stop";
+export type EtaPrediction = {
+  eta_minutes: number | null;
+  message: string;
+  confidence: "high" | "medium" | "low";
+  status: "connected" | "failed" | "not_configured";
+  error?: string;
+};
 
 export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], alerts: ServiceAlert[], context: AnalysisContext = "network"): string {
   const compactTelemetry = telemetry.map((item) => ({
@@ -136,4 +143,54 @@ export async function analyze(itinerary: unknown[], telemetry: TelemetryRecord[]
   }
   log.error("Brev NIM request failed; using deterministic fallback", { endpoint, model: configuredModel, error: lastError });
   return { action: fallbackAction(telemetry), status: "failed", error: lastError };
+}
+
+function parseEta(raw: string) {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Nemotron ETA response did not contain a JSON object");
+  const value = JSON.parse(match[0]) as Record<string, unknown>;
+  const minutes = Number(value.eta_minutes);
+  if (!Number.isFinite(minutes) || minutes < 0 || minutes > 180) throw new Error("Nemotron ETA response did not contain a valid arrival estimate");
+  const confidence = value.confidence;
+  if (confidence !== "high" && confidence !== "medium" && confidence !== "low") throw new Error("Nemotron ETA response did not contain a valid confidence level");
+  const message = typeof value.message === "string" && value.message.trim()
+    ? value.message.trim()
+    : `The next bus is estimated in about ${Math.round(minutes)} minutes.`;
+  return { eta_minutes: Math.round(minutes), message, confidence: confidence as EtaPrediction["confidence"] };
+}
+
+export async function predictEta(
+  stop: { name: string; latitude: number; longitude: number },
+  line: string,
+  vehicles: Array<{ vehicle_id: string; distance_miles: number; speed_mph: number | null; observed_at: string }>,
+): Promise<EtaPrediction> {
+  const configuredEndpoint = process.env.BREV_NIM_ENDPOINT?.trim() || process.env.NEMOTRON_ENDPOINT?.trim();
+  if (!configuredEndpoint) return { eta_minutes: null, message: "Nemotron is not configured, so an arrival estimate is unavailable.", confidence: "low", status: "not_configured" };
+  if (vehicles.length === 0) return { eta_minutes: null, message: `No ${line} bus is currently reporting near ${stop.name}.`, confidence: "low", status: "connected" };
+  const endpoint = endpointFor(configuredEndpoint);
+  const configuredModel = process.env.BREV_NIM_MODEL?.trim() || process.env.NEMOTRON_MODEL?.trim() || "nvidia/llama-3.1-nemotron-nano-vl-8b-v1";
+  const apiKey = process.env.BREV_NIM_API_KEY?.trim() || process.env.NEMOTRON_API_KEY?.trim();
+  const prompt = `You estimate the next bus arrival for a traveler. Return ONLY one JSON object with eta_minutes (a whole number from 0 to 180), confidence ("high"|"medium"|"low"), and message. The message must state the estimated arrival time in plain language and mention uncertainty when confidence is not high. Use the closest plausible vehicle, its distance, and reported speed. If speed is null, infer conservatively from distance and do not treat it as stopped. Do not invent schedule data.
+STOP: ${JSON.stringify(stop.name)}
+LINE: ${JSON.stringify(line)}
+CANDIDATE VEHICLES: ${JSON.stringify(vehicles)}`;
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+      body: JSON.stringify({ model: configuredModel, messages: [{ role: "system", content: prompt }], temperature: 0, max_tokens: 180, chat_template_kwargs: { enable_thinking: false } }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(12000),
+    });
+    const responseText = await response.text();
+    if (!response.ok) throw new Error(`Brev NIM HTTP ${response.status}: ${responseText.slice(0, 300)}`);
+    const result = JSON.parse(responseText) as { choices?: { message?: { content?: string } }[] };
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Brev NIM ETA response did not contain message content");
+    return { ...parseEta(content), status: "connected" };
+  } catch (error) {
+    const message = errorMessage(error);
+    log.warn("Nemotron ETA prediction failed", { endpoint, model: configuredModel, error: message });
+    return { eta_minutes: null, message: "Nemotron could not estimate the next arrival right now.", confidence: "low", status: "failed", error: message };
+  }
 }

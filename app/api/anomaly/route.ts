@@ -2,7 +2,7 @@ import { getState } from "../../../lib/store";
 import { log } from "../../../lib/logging";
 import { getPrtStops, getPrtStopRoutes } from "../../../lib/stops";
 import { fetchPrt } from "../../../lib/providers";
-import { analyze } from "../../../lib/intelligence";
+import { analyze, predictEta } from "../../../lib/intelligence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +45,22 @@ export async function POST(request: Request) {
     && item.longitude !== null
     && distanceMiles(item.latitude, item.longitude) <= 1.5,
   );
+  const etaCandidates = liveTelemetry.filter((item) =>
+    item.source === "prt"
+    && item.route !== null
+    && normalizeLine(item.route) === normalizeLine(line)
+    && item.latitude !== null
+    && item.longitude !== null
+    && distanceMiles(item.latitude, item.longitude) <= 12,
+  ).map((item) => ({
+    vehicle_id: item.vehicle_id,
+    distance_miles: Number(distanceMiles(item.latitude!, item.longitude!).toFixed(2)),
+    speed_mph: item.speed_mph === null ? null : Number(item.speed_mph.toFixed(1)),
+    observed_at: item.observed_at,
+  })).sort((left, right) => left.distance_miles - right.distance_miles).slice(0, 5);
+  const eta = selectedStop && lineIsServed
+    ? await predictEta({ name: selectedStop.name, latitude: selectedStop.latitude, longitude: selectedStop.longitude }, line, etaCandidates)
+    : null;
   const analysis = selectedStop && matching.length > 0
     ? await analyze(
       [{ stop, stop_id: selectedStop.id, line, radius_miles: 1.5, purpose: "Decide whether this route is anomalous near this selected stop." }],
@@ -71,6 +87,11 @@ export async function POST(request: Request) {
           ? `Line ${line} serves ${stop}, but no vehicle position is currently reporting within 1.5 miles.`
           : "Nemotron did not identify an anomaly in the nearby route telemetry.",
     vehicle_count: matching.length,
+    eta_minutes: eta?.eta_minutes ?? null,
+    eta_message: eta?.message || "Choose a served stop and line to estimate the next arrival.",
+    eta_confidence: eta?.confidence || null,
+    eta_status: eta?.status || "not_run",
+    eta_error: eta?.error,
     observed_at: matching[0]?.observed_at || liveTelemetry.find((item) => item.source === "prt")?.observed_at || state.last_poll_at,
   };
   log.info("Bus stop Nemotron anomaly lookup completed", { stop, stop_id: selectedStop?.id, line, served_routes: servedRoutes, status: result.status, nemotron_status: analysis?.status || "not_run", vehicle_count: matching.length });
