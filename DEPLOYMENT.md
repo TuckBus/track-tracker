@@ -1,6 +1,6 @@
 # Vercel deployment guide
 
-Project Dispatch is a single Next.js application. The UI and all backend routes deploy to Vercel together; there is no Python service to run separately.
+Track Tracker is a single Next.js application. The UI and all backend routes deploy to Vercel together; there is no Python service to run separately.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Vercel Next.js deployment
   |-- /api/poll
   |-- /api/cron/poll (Vercel Cron, daily at 00:00 UTC on Hobby)
   |-- /api/actions/[id]/execute
-  |-- PRT GTFS-RT + OpenSky + Amtrak fetchers
+  |-- PRT GTFS-RT bus fetcher
   `-- Nemotron API
              |
              `-- optional Upstash Redis state persistence
@@ -25,7 +25,6 @@ The app is request-driven because Vercel Functions are not persistent processes.
 - Vercel account connected to the repository.
 - NVIDIA Nemotron endpoint and API key.
 - An Upstash Redis database connected to Vercel Storage, recommended for production.
-- Optional maintained Amtrak JSON telemetry endpoint.
 
 ## Deploy
 
@@ -203,13 +202,9 @@ Vercel Cron automatically sends `Authorization: Bearer <CRON_SECRET>` to the cro
 | Variable | Required | Default |
 | --- | --- | --- |
 | `PRT_VEHICLE_POSITIONS_URL` | No | `https://truetime.portauthority.org/gtfsrt-bus/vehicles` |
-| `OPENSKY_STATES_URL` | No | `https://opensky-network.org/api/states/all` |
-| `AMTRAK_TELEMETRY_URL` | No | Disabled when unset; no train positions appear without an authorized JSON telemetry endpoint |
 | `PRT_SERVICE_ALERTS_URL` | No | `https://truetime.portauthority.org/gtfsrt-bus/alerts` |
 
-PRT is parsed as GTFS-Realtime protobuf. Use the vehicle feed without the `?debug` query parameter; that debug response is not protobuf and will be rejected. OpenSky is queried using a Pittsburgh bounding box. Amtrak accepts either a JSON array or `{ "trains": [...] }` and filters train numbers 42 and 43. Confirm that any Amtrak endpoint is authorized and stable before using it.
-
-The app does not query Amtrak's public website directly. If `AMTRAK_TELEMETRY_URL` is unset, the Amtrak provider intentionally returns no records and logs that rail telemetry is not configured. A valid endpoint must return train 42 or 43 with latitude, longitude, and optional speed fields for those trains to appear on the map and vehicle list. OpenSky network failures now include the request URL, HTTP response body preview, and underlying fetch cause when available in Vercel function logs.
+PRT is parsed as GTFS-Realtime protobuf. Use the vehicle feed without the `?debug` query parameter; that debug response is not protobuf and will be rejected.
 
 The searchable stop picker reads the bundled `public/GTFS.zip` file and parses `stops.txt` through `/api/stops`. The catalog is cached for the lifetime of a serverless instance.
 Polling also ingests posted PRT GTFS-Realtime service alerts and includes them in the risk analysis. Routes with posted alerts are highlighted on the map.
@@ -226,7 +221,7 @@ Polling also ingests posted PRT GTFS-Realtime service alerts and includes them i
 
 The cron route:
 
-1. Fetches PRT, Amtrak, and OpenSky telemetry.
+1. Fetches PRT bus telemetry and service alerts.
 2. Records individual provider errors without aborting the full poll.
 3. Sends normalized observations to Nemotron.
 4. Validates the action payload.
@@ -276,7 +271,7 @@ In the Vercel dashboard, inspect **Logs** for `/api/cron/poll` and confirm:
 - `provider_errors` only contains expected unavailable sources.
 - Nemotron is not returning authentication or schema errors.
 - The dashboard's **Last checked** timestamp advances.
-- A stationary Amtrak record creates a proactive alert when Nemotron is not configured.
+- A stationary PRT bus creates a proactive alert when Nemotron is not configured.
 
 ## Operational and security notes
 

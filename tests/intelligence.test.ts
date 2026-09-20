@@ -3,9 +3,10 @@ import { buildPrompt, conservativeEtaMinutes, fallbackAction, parseAction } from
 import { stagedTelemetry } from "../lib/test-telemetry";
 
 describe("Nemotron intelligence", () => {
-  it("adds a five-minute safety buffer to model ETA estimates", () => {
-    expect(conservativeEtaMinutes(7)).toBe(12);
-    expect(conservativeEtaMinutes(175)).toBe(180);
+  it("adds a one-minute safety buffer to model ETA estimates", () => {
+    expect(conservativeEtaMinutes(7)).toBe(8);
+    expect(conservativeEtaMinutes(175)).toBe(176);
+    expect(conservativeEtaMinutes(200)).toBe(180);
   });
 
   it("parses JSON embedded in a model response and adds friendly defaults", () => {
@@ -25,11 +26,11 @@ describe("Nemotron intelligence", () => {
     expect(() => parseAction({ status: "unknown", action: "none", message: "Bad" })).toThrow("does not match the action schema");
   });
 
-  it("uses deterministic fallback behavior for stationary trains", () => {
-    const train = {
-      source: "amtrak",
-      vehicle_id: "TEST-TRAIN",
-      route: "Pennsylvanian",
+  it("uses deterministic fallback behavior for a stationary bus", () => {
+    const bus = {
+      source: "prt",
+      vehicle_id: "TEST-BUS",
+      route: "61A",
       latitude: 40.4,
       longitude: -80,
       speed_mph: 0,
@@ -38,7 +39,7 @@ describe("Nemotron intelligence", () => {
       metadata: {},
     };
 
-    expect(fallbackAction([train])).toMatchObject({
+    expect(fallbackAction([bus])).toMatchObject({
       status: "anomalous",
       action: "trigger_ui_alert",
       source: "dispatch-fallback",

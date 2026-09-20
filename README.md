@@ -1,6 +1,6 @@
-# Project Dispatch
+# Track Tracker
 
-Project Dispatch is a Vercel-native Next.js application for proactive Pittsburgh transit and logistics monitoring. The browser, API routes, Nemotron integration, provider polling, and dashboard are deployed as one project.
+Track Tracker is a Vercel-native Next.js application for proactive Pittsburgh Regional Transit bus monitoring. The browser, API routes, Nemotron integration, PRT polling, and dashboard are deployed as one project.
 
 See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for complete local setup and testing instructions.
 

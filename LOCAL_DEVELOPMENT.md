@@ -1,6 +1,6 @@
 # Local development
 
-Project Dispatch runs locally as a single Next.js application. The browser UI and backend API routes are served from the same development server.
+Track Tracker runs locally as a single Next.js application. The browser UI and backend API routes are served from the same development server.
 
 ## Prerequisites
 
@@ -105,8 +105,6 @@ Optional provider overrides:
 
 ```text
 PRT_VEHICLE_POSITIONS_URL=https://truetime.portauthority.org/gtfsrt-bus/vehicles
-OPENSKY_STATES_URL=https://opensky-network.org/api/states/all
-AMTRAK_TELEMETRY_URL=https://your-authorized-amtrak-adapter.example/trains
 ```
 
 The PRT URL must not include `?debug`; that response is diagnostic content, not GTFS-Realtime protobuf.
@@ -211,8 +209,6 @@ npm run dev -- --port 3001
 Check `/api/state` and inspect `provider_errors`. Common causes include:
 
 - A provider endpoint is unavailable.
-- OpenSky rate limiting.
-- An Amtrak adapter returning an unexpected JSON shape.
 - A PRT endpoint returning something other than GTFS-RT protobuf.
 
 If the PRT error mentions an invalid wire type, remove `?debug` from `PRT_VEHICLE_POSITIONS_URL` and restart the server.

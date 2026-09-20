@@ -6,8 +6,7 @@ const initial: DispatchState = {
   last_poll_at: null,
   telemetry: [],
   itineraries: [
-    { id: "pennsylvanian", label: "Pennsylvanian 42", mode: "rail", status: "Monitoring" },
-    { id: "pit-flight", label: "PIT departure", mode: "air", status: "Monitoring" },
+    { id: "prt-buses", label: "Pittsburgh Regional Transit buses", mode: "bus", status: "Monitoring" },
   ],
   alerts: [],
   provider_errors: [],
@@ -24,7 +23,14 @@ export async function getState(): Promise<DispatchState> {
   const client = redis();
   if (!client) return initial;
   const state = (await client.get<DispatchState>(key)) || initial;
-  return { ...initial, ...state, nemotron: state.nemotron || initial.nemotron, service_alerts: state.service_alerts || [] };
+  return {
+    ...initial,
+    ...state,
+    telemetry: (state.telemetry || []).filter((item) => item.source === "prt"),
+    itineraries: initial.itineraries,
+    nemotron: state.nemotron || initial.nemotron,
+    service_alerts: state.service_alerts || [],
+  };
 }
 
 export async function saveState(state: DispatchState): Promise<DispatchState> {

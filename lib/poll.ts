@@ -1,5 +1,5 @@
 import { analyze } from "./intelligence";
-import { fetchAmtrak, fetchOpenSky, fetchPrt, fetchPrtAlerts } from "./providers";
+import { fetchPrt, fetchPrtAlerts } from "./providers";
 import { appendAlert, getState, saveState } from "./store";
 import type { ActionPayload, DispatchState, TelemetryRecord } from "./types";
 import { errorMessage, log } from "./logging";
@@ -26,11 +26,7 @@ export async function poll(options: { testScenario?: TestScenario; clearAlerts?:
     log.info("Staged telemetry poll completed", { test_scenario: options.testScenario, telemetry_count: fixture.telemetry.length, action: analysis.action.action, duration_ms: Date.now() - startedAt });
     return { action: analysis.action, state: nextState };
   }
-  const providers = [
-    ["prt", fetchPrt],
-    ["amtrak", fetchAmtrak],
-    ["opensky", fetchOpenSky],
-  ] as const;
+  const providers = [["prt", fetchPrt]] as const;
   const telemetry: TelemetryRecord[] = [];
   const errors: string[] = [];
   const serviceAlertsRequest = fetchPrtAlerts().catch((error) => {

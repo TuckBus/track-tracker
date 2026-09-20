@@ -58,7 +58,7 @@ export function buildPrompt(itinerary: unknown[], telemetry: TelemetryRecord[], 
     speed_mph: item.speed_mph,
     observed_at: item.observed_at,
     position_available: item.latitude !== null && item.longitude !== null,
-    metadata: item.source === "opensky" ? { callsign: item.metadata.callsign, airport: item.metadata.airport } : undefined,
+    metadata: undefined,
   }));
   const contextPolicy = context === "stop"
     ? "This is a specific stop check, so be more responsive to localized evidence: one or more nearby vehicles with a clearly slow measurable speed can justify a cautious possible-delay or anomaly result, especially when the route context supports it. Do not require a route-wide pattern for this focused check. Still ignore null speeds, null positions, and notices by themselves, and do not call a vehicle absent because a field is unknown."
@@ -93,8 +93,8 @@ export function parseAction(raw: string | Record<string, unknown>): ActionPayloa
 }
 
 export function fallbackAction(telemetry: TelemetryRecord[]): ActionPayload {
-  if (telemetry.some((item) => item.source === "amtrak" && item.speed_mph !== null && item.speed_mph < 1)) {
-    return payload("anomalous", "trigger_ui_alert", "Pennsylvanian telemetry reports a stationary train; review your itinerary.", "dispatch-fallback");
+  if (telemetry.some((item) => item.source === "prt" && item.speed_mph !== null && item.speed_mph < 1)) {
+    return payload("anomalous", "trigger_ui_alert", "A PRT bus appears to be stationary; check your route before heading out.", "dispatch-fallback");
   }
   return payload("on_time", "none", "No actionable disruption detected.", "dispatch-fallback");
 }
