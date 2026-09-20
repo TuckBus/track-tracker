@@ -37,7 +37,7 @@ export default function Home() {
   const [stopSearch, setStopSearch] = useState("");
   const [stopMenuOpen, setStopMenuOpen] = useState(false);
   const [stopsLoading, setStopsLoading] = useState(true);
-  const [actionError, setActionError] = useState("");
+  const [, setActionError] = useState("");
   const pollingRef = useRef(false);
   const alertSoundRef = useRef<AudioContext | null>(null);
 
@@ -45,7 +45,6 @@ export default function Home() {
     if (pollingRef.current) return;
     pollingRef.current = true;
     setPolling(true);
-    setActionError("");
     setInitialLoading(true);
     setInitialLoadStatus("Refreshing live telemetry and generating the latest AI analysis...");
     try {
@@ -178,21 +177,6 @@ export default function Home() {
     }
   }
 
-  async function execute(alert: ActionPayload, type: "draft_email" | "reschedule_calendar") {
-    setActionError("");
-    try {
-      const response = await fetch(`/api/actions/${alert.id}/execute`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type }),
-      });
-      const result = await response.json() as { state?: DispatchState; error?: string };
-      if (!response.ok || !result.state) throw new Error(result.error || "Could not prepare that action.");
-      setState(result.state);
-      setToast(result.state.alerts[0] || null);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Could not prepare that action.");
-    }
-  }
-
   const vehicles = useMemo(() => state.telemetry.filter((item) => item.latitude !== null && item.longitude !== null), [state.telemetry]);
   const deferredVehicleSearch = useDeferredValue(vehicleSearch);
   const filteredVehicles = useMemo(() => state.telemetry.filter((vehicle) => `${vehicle.vehicle_id} ${vehicle.source} ${vehicle.route || ""}`.toLowerCase().includes(deferredVehicleSearch.toLowerCase())), [state.telemetry, deferredVehicleSearch]);
@@ -248,7 +232,7 @@ export default function Home() {
       {lookupError && <div className="errors">{lookupError}</div>}
     </section>
     <section className="panel alert-panel"><div className="panel-title"><span>PROACTIVE ACTION CENTER</span><span className="count">{state.alerts.filter((item) => item.source === "nemotron").length}</span></div>
-      {active ? <div className="alert-card"><div className="warning">!</div><div className="alert-content"><span className="alert-label">NEMOTRON EARLY WARNING · {active.status.toUpperCase()}</span><h2>{active.message}</h2><p>{active.reasoning || "Live vehicle data indicates a developing service risk."}</p><p><strong>Routes:</strong> {active.affected_routes?.length ? active.affected_routes.join(", ") : "Route still being determined"} · <strong>Recommended:</strong> allow extra travel time and check again before departing.</p><div className="actions"><button onClick={() => execute(active, "draft_email")}>Draft email</button><button onClick={() => execute(active, "reschedule_calendar")}>Reschedule calendar</button></div>{actionError && <div className="errors">{actionError}</div>}</div></div> : <div className="empty"><span>✓</span><div><strong>No new AI-predicted delay</strong><p>Nemotron is watching for developing issues that PRT has not already posted.</p></div></div>}
+      {active ? <div className="alert-card"><div className="warning">!</div><div className="alert-content"><span className="alert-label">NEMOTRON EARLY WARNING · {active.status.toUpperCase()}</span><h2>{active.message}</h2><p>{active.reasoning || "Live vehicle data indicates a developing service risk."}</p><p><strong>Routes:</strong> {active.affected_routes?.length ? active.affected_routes.join(", ") : "Route still being determined"} · <strong>Recommended:</strong> allow extra travel time and check again before departing.</p></div></div> : <div className="empty"><span>✓</span><div><strong>No new AI-predicted delay</strong><p>Nemotron is watching for developing issues that PRT has not already posted.</p></div></div>}
     </section>
     {state.provider_errors.length > 0 && <div className="errors">Some live sources are unavailable. Fallback monitoring remains active: {state.provider_errors.join(" · ")}</div>}
     <footer>TRACK TRACKER <span>•</span> PRT BUS WATCH <span>•</span> PITTSBURGH REGION</footer>
