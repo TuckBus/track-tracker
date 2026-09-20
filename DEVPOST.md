@@ -2,7 +2,7 @@
 
 ## Elevator pitch
 
-Track Tracker is a parrot-bright, predictive dashboard for Pittsburgh Regional Transit buses. It turns live PRT vehicle data, stop information, and service alerts into a map, stop-level ETA checks, and early warnings that help riders leave with confidence instead of guessing whether their bus is really coming.
+Track Tracker predicts PRT bus delays from live data, helping Pittsburgh riders find their bus, check ETAs, and leave with confidence.
 
 ## About the project
 
@@ -31,3 +31,7 @@ We also had to make the system resilient to provider and model failures. PRT req
 ## Built With
 
 Next.js, React, TypeScript, GTFS-Realtime, PRT GTFS-RT feeds, Leaflet, React Leaflet, NVIDIA Nemotron, Vercel, Upstash Redis, Vitest
+
+## Generative AI
+
+**Yes.** We used NVIDIA Nemotron as a transit early-warning assistant. Each polling cycle sends it compact, route-level summaries of PRT bus speeds, positions, stationary vehicles, missing data, and posted service alerts. Nemotron identifies meaningful patterns, explains the evidence in rider-friendly language, and flags possible delays before an official alert is posted. We used generative AI because it can turn several noisy signals into a concise, understandable explanation, while deterministic fallback rules keep Track Tracker useful when the model is unavailable.
