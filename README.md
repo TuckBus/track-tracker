@@ -1,5 +1,10 @@
 # Track Tracker
 
+## Archived
+This was a project created for Steelhacks XIII, and we have no intention on maintaining it. We had a blast, see you next time ;)
+---
+
+
 Track Tracker is a Vercel-native Next.js application for proactive Pittsburgh Regional Transit bus monitoring. The browser, API routes, Nemotron integration, PRT polling, and dashboard are deployed as one project.
 
 See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for complete local setup and testing instructions.
