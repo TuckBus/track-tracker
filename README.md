@@ -1,11 +1,32 @@
 # Track Tracker
+Track Tracker is a Vercel-native Next.js application for proactive Pittsburgh Regional Transit bus monitoring. The browser, API routes, Nemotron integration, PRT polling, and dashboard are deployed as one project.
 
-## Archived
-This was a project created for Steelhacks XIII, and we have no intention on maintaining it. We had a blast, see you next time ;)
+
+## ⚠️ Archived
+This was a project created for [SteelHacks XIII](https://steelhacks.org), and we have no intention on maintaining it. We had a blast, see you next time ;)
+
+Submitted Tracks:
+- Beyond the Chatbot
+- Xtract
+- Seed Round
+- \[MLH] Best use of `.tech` domain
+
+(we won none of the above, but congrats to the groups that did!)
+
+It can still be found at [techtracker.tech](https://techtracker.tech) for the time being, though the brev instance that powered the AI backend has been deleted, so it is stuck in deterministic (i.e. bad) mode.
+Also feel free to check out the [Devpost](https://devpost.com/software/tbd-cbjlpn) we made for the project
+
+
+## Contributors
+| Name            | Email           | Role                        |
+|-----------------|-----------------|-----------------------------|
+| Tucker Busfield | TJB229@pitt.edu | Implementation, Integration |
+| Ethan Steiner   | EPS82@pitt.edu  | Implementation              |
+| Shane Klein     | SFK34@pitt.edu  | Video, efficacy testing     |
+| Jesse Huber     | JGH60@pitt.edu  | Video, efficacy testing     |
+
 ---
 
-
-Track Tracker is a Vercel-native Next.js application for proactive Pittsburgh Regional Transit bus monitoring. The browser, API routes, Nemotron integration, PRT polling, and dashboard are deployed as one project.
 
 See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for complete local setup and testing instructions.
 
